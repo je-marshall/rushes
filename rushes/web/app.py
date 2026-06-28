@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import secrets
 from pathlib import Path
 
 import uvicorn
@@ -6,17 +7,39 @@ from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.sessions import SessionMiddleware
 
 from .. import cameras, config, db, events as ev
+
+_UNPROTECTED = {"/login"}
+
+
+class AuthMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        if request.url.path in _UNPROTECTED:
+            return await call_next(request)
+        if not request.session.get("authenticated"):
+            return RedirectResponse("/login", status_code=302)
+        return await call_next(request)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    if not config.SECRET_KEY:
+        raise RuntimeError(
+            "RUSHES_SECRET_KEY is not set. "
+            "Generate one with: python3 -c \"import secrets; print(secrets.token_hex(32))\""
+        )
+    if not config.AUTH_PASSWORD:
+        raise RuntimeError("RUSHES_PASSWORD is not set.")
     db.init_db(db.connect())
     yield
 
 
 app = FastAPI(title="Rushes", lifespan=lifespan)
+app.add_middleware(SessionMiddleware, secret_key=config.SECRET_KEY, max_age=60 * 60 * 24 * 30)
+app.add_middleware(AuthMiddleware)
 
 app.mount("/thumbs",   StaticFiles(directory=str(config.THUMB_DIR)),   name="thumbs")
 app.mount("/footage",  StaticFiles(directory=str(config.FOOTAGE_DIR)), name="footage")
@@ -140,6 +163,37 @@ async def rename_camera(camera_id: int, name: str = Form(...)):
     conn = db.connect()
     cameras.rename(conn, camera_id, name)
     return RedirectResponse("/cameras", status_code=303)
+
+
+# ---------------------------------------------------------------------------
+# Auth
+# ---------------------------------------------------------------------------
+
+@app.get("/login", response_class=HTMLResponse)
+async def login_page(request: Request):
+    if request.session.get("authenticated"):
+        return RedirectResponse("/", status_code=302)
+    return _templates.TemplateResponse(request, "login.html", {})
+
+
+@app.post("/login")
+async def login_submit(
+    request: Request,
+    username: str = Form(...),
+    password: str = Form(...),
+):
+    username_ok = secrets.compare_digest(username, config.AUTH_USERNAME)
+    password_ok = secrets.compare_digest(password, config.AUTH_PASSWORD)
+    if username_ok and password_ok:
+        request.session["authenticated"] = True
+        return RedirectResponse("/", status_code=303)
+    return _templates.TemplateResponse(request, "login.html", {"error": "Invalid credentials"})
+
+
+@app.post("/logout")
+async def logout(request: Request):
+    request.session.clear()
+    return RedirectResponse("/login", status_code=303)
 
 
 # ---------------------------------------------------------------------------

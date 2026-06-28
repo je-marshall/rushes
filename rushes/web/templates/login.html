@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rushes — Login</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: #0f0f0f; color: #e0e0e0; font-family: system-ui, sans-serif;
+  min-height: 100vh; display: flex; align-items: center; justify-content: center;
+}
+.card {
+  background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 10px;
+  padding: 2rem 2.5rem; width: 100%; max-width: 360px;
+}
+h1 { font-size: 1.2rem; font-weight: 600; color: #fff; margin-bottom: 1.5rem; }
+label { display: block; font-size: 0.8rem; color: #888; margin-bottom: 0.25rem; }
+input {
+  display: block; width: 100%;
+  background: #111; border: 1px solid #333; color: #eee;
+  padding: 0.5rem 0.75rem; border-radius: 5px; font-size: 0.9rem;
+  margin-bottom: 1rem;
+}
+input:focus { outline: none; border-color: #555; }
+button {
+  width: 100%; background: #2a6abf; border: none; color: #fff;
+  padding: 0.55rem; border-radius: 5px; font-size: 0.9rem; cursor: pointer;
+}
+button:hover { background: #3a7acf; }
+.error { color: #e07070; font-size: 0.82rem; margin-bottom: 1rem; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>Rushes</h1>
+  {% if error %}<p class="error">{{ error }}</p>{% endif %}
+  <form method="post" action="/login">
+    <label for="username">Username</label>
+    <input id="username" name="username" type="text" autocomplete="username" autofocus>
+    <label for="password">Password</label>
+    <input id="password" name="password" type="password" autocomplete="current-password">
+    <button type="submit">Sign in</button>
+  </form>
+</div>
+</body>
+</html>

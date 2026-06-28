@@ -17,6 +17,9 @@ RUSHES_DATA="${RUSHES_DATA:-/var/lib/rushes}"
 VENV="/opt/rushes-venv"
 JELLYFIN_URL="${JELLYFIN_URL:-}"
 JELLYFIN_TOKEN="${JELLYFIN_TOKEN:-}"
+AUTH_USERNAME="${RUSHES_USERNAME:-rushes}"
+AUTH_PASSWORD="${RUSHES_PASSWORD:-}"
+SECRET_KEY="${RUSHES_SECRET_KEY:-}"
 
 # ---------------------------------------------------------------------------
 # Args
@@ -26,8 +29,10 @@ while [[ $# -gt 0 ]]; do
         --jellyfin-url)    JELLYFIN_URL="$2";   shift 2 ;;
         --jellyfin-token)  JELLYFIN_TOKEN="$2"; shift 2 ;;
         --data-dir)        RUSHES_DATA="$2";    shift 2 ;;
+        --username)        AUTH_USERNAME="$2";  shift 2 ;;
+        --password)        AUTH_PASSWORD="$2";  shift 2 ;;
         -h|--help)
-            echo "Usage: install-container.sh [--jellyfin-url URL] [--jellyfin-token TOKEN] [--data-dir PATH]"
+            echo "Usage: install-container.sh [--jellyfin-url URL] [--jellyfin-token TOKEN] [--data-dir PATH] [--username USER] [--password PASS]"
             exit 0 ;;
         *) echo "Unknown argument: $1"; exit 1 ;;
     esac
@@ -44,6 +49,24 @@ fi
 if [[ ! -f "$REPO_DIR/pyproject.toml" ]]; then
     echo "ERROR: could not find repo root (expected pyproject.toml at $REPO_DIR)"
     exit 1
+fi
+
+# Prompt for password if not provided
+if [[ -z "$AUTH_PASSWORD" ]]; then
+    read -rsp "Set Rushes password (for user '$AUTH_USERNAME'): " AUTH_PASSWORD; echo
+    read -rsp "Confirm password: " AUTH_PASSWORD2; echo
+    if [[ "$AUTH_PASSWORD" != "$AUTH_PASSWORD2" ]]; then
+        echo "ERROR: passwords do not match"; exit 1
+    fi
+    if [[ -z "$AUTH_PASSWORD" ]]; then
+        echo "ERROR: password cannot be empty"; exit 1
+    fi
+fi
+
+# Generate a secret key if not provided
+if [[ -z "$SECRET_KEY" ]]; then
+    SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))")
+    echo "    generated secret key"
 fi
 
 # ---------------------------------------------------------------------------
@@ -76,8 +99,11 @@ mkdir -p "$RUSHES_DATA"
 # ---------------------------------------------------------------------------
 echo "==> Installing rushes-web systemd service"
 
-# Build the Environment= lines conditionally
+# Build the Environment= lines
 ENV_LINES="Environment=RUSHES_DATA=$RUSHES_DATA"
+ENV_LINES+=$'\n'"Environment=RUSHES_SECRET_KEY=$SECRET_KEY"
+ENV_LINES+=$'\n'"Environment=RUSHES_USERNAME=$AUTH_USERNAME"
+ENV_LINES+=$'\n'"Environment=RUSHES_PASSWORD=$AUTH_PASSWORD"
 [[ -n "$JELLYFIN_URL"   ]] && ENV_LINES+=$'\n'"Environment=JELLYFIN_URL=$JELLYFIN_URL"
 [[ -n "$JELLYFIN_TOKEN" ]] && ENV_LINES+=$'\n'"Environment=JELLYFIN_TOKEN=$JELLYFIN_TOKEN"
 
