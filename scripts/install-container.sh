@@ -1,14 +1,17 @@
 #!/usr/bin/env bash
-# Run inside the LXC container as root, from the repo root.
+# Run inside the LXC container as root. Can be called from anywhere.
 #
 # Usage:
-#   sudo bash scripts/install-container.sh
-#   sudo bash scripts/install-container.sh --jellyfin-url http://192.168.1.x:8096 \
-#                                           --jellyfin-token your-api-key
+#   sudo bash /path/to/rushes/scripts/install-container.sh
+#   sudo bash /path/to/rushes/scripts/install-container.sh \
+#     --jellyfin-url http://192.168.1.x:8096 --jellyfin-token your-api-key
 #
 # Safe to re-run — idempotent.
 
 set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="$(dirname "$SCRIPT_DIR")"
 
 RUSHES_DATA="${RUSHES_DATA:-/var/lib/rushes}"
 VENV="/opt/rushes-venv"
@@ -38,12 +41,10 @@ if [[ $EUID -ne 0 ]]; then
     exit 1
 fi
 
-if [[ ! -f pyproject.toml ]]; then
-    echo "ERROR: run from the repo root directory"
+if [[ ! -f "$REPO_DIR/pyproject.toml" ]]; then
+    echo "ERROR: could not find repo root (expected pyproject.toml at $REPO_DIR)"
     exit 1
 fi
-
-REPO_DIR="$(pwd)"
 
 # ---------------------------------------------------------------------------
 # System packages
