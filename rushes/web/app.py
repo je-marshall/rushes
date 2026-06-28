@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import uvicorn
@@ -8,7 +9,14 @@ from fastapi.templating import Jinja2Templates
 
 from .. import cameras, config, db, events as ev
 
-app = FastAPI(title="Rushes")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    db.init_db(db.connect())
+    yield
+
+
+app = FastAPI(title="Rushes", lifespan=lifespan)
 
 app.mount("/thumbs",   StaticFiles(directory=str(config.THUMB_DIR)),   name="thumbs")
 app.mount("/footage",  StaticFiles(directory=str(config.FOOTAGE_DIR)), name="footage")
