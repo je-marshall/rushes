@@ -45,8 +45,8 @@ async def index(request: Request, favourite: bool = False, flagged: bool = False
 
     clips       = _enrich_clips(rows)
     all_events  = conn.execute("SELECT * FROM events ORDER BY created_at DESC").fetchall()
-    return _templates.TemplateResponse("index.html", {
-        "request": request, "clips": clips,
+    return _templates.TemplateResponse(request, "index.html", {
+        "clips": clips,
         "favourite": favourite, "flagged": flagged,
         "all_events": all_events,
     })
@@ -96,8 +96,8 @@ async def events_list(request: Request):
         """, (evt["id"],)).fetchall()
         event_data.append({"event": evt, "clips": _enrich_clips(clips)})
 
-    return _templates.TemplateResponse("events.html", {
-        "request": request, "event_data": event_data,
+    return _templates.TemplateResponse(request, "events.html", {
+        "event_data": event_data,
     })
 
 
@@ -130,8 +130,8 @@ async def cameras_list(request: Request):
         GROUP BY cam.id
         ORDER BY cam.last_seen DESC
     """).fetchall()
-    return _templates.TemplateResponse("cameras.html", {
-        "request": request, "cameras": cam_rows,
+    return _templates.TemplateResponse(request, "cameras.html", {
+        "cameras": cam_rows,
     })
 
 
