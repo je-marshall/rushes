@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cameras — Rushes</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #0f0f0f; color: #e0e0e0; font-family: system-ui, sans-serif; }
+
+header {
+  position: sticky; top: 0; z-index: 20;
+  background: #1a1a1a; border-bottom: 1px solid #2a2a2a;
+  padding: 0.75rem 1.5rem; display: flex; align-items: center; gap: 1.5rem;
+}
+header h1 { font-size: 1.1rem; font-weight: 600; color: #fff; }
+nav { display: flex; gap: 0.5rem; }
+nav a {
+  color: #888; text-decoration: none;
+  padding: 0.3rem 0.75rem; border-radius: 999px; font-size: 0.85rem;
+}
+nav a:hover  { background: #2a2a2a; color: #ddd; }
+nav a.active { background: #333; color: #fff; }
+
+.page { max-width: 700px; margin: 0 auto; padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem; }
+
+.camera-card {
+  background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 8px;
+  padding: 1rem 1.25rem; display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
+}
+.camera-info { flex: 1; min-width: 180px; }
+.camera-info .name { font-size: 1rem; color: #fff; font-weight: 500; }
+.camera-info .detail { font-size: 0.78rem; color: #555; margin-top: 0.25rem; }
+.camera-info .slug { font-family: monospace; color: #444; }
+.clip-count { font-size: 0.8rem; color: #666; white-space: nowrap; }
+
+form.rename { display: flex; gap: 0.5rem; align-items: center; }
+form.rename input {
+  background: #111; border: 1px solid #333; color: #eee;
+  padding: 0.35rem 0.6rem; border-radius: 4px; font-size: 0.85rem; width: 180px;
+}
+form.rename button {
+  background: #2a4a2a; border: 1px solid #3a6a3a; color: #8fc48f;
+  padding: 0.35rem 0.7rem; border-radius: 4px; cursor: pointer; font-size: 0.82rem;
+}
+form.rename button:hover { background: #3a6a3a; color: #bfe8bf; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Rushes</h1>
+  <nav>
+    <a href="/">Unsorted</a>
+    <a href="/events">Events</a>
+    <a href="/cameras" class="active">Cameras</a>
+  </nav>
+</header>
+
+<div class="page">
+  {% if not cameras %}
+    <p style="color:#555">No cameras seen yet — ingest footage first.</p>
+  {% endif %}
+
+  {% for cam in cameras %}
+  <div class="camera-card">
+    <div class="camera-info">
+      <div class="name">{{ cam.name or cam.model or 'Unnamed camera' }}</div>
+      <div class="detail">
+        Serial: {{ cam.serial }}
+        {% if cam.slug %} &nbsp;·&nbsp; <span class="slug">folder: {{ cam.slug }}/</span>{% endif %}
+        {% if cam.last_seen %} &nbsp;·&nbsp; last seen {{ cam.last_seen[:10] }}{% endif %}
+      </div>
+    </div>
+    <div class="clip-count">{{ cam.clip_count }} clip{{ 's' if cam.clip_count != 1 }}</div>
+    <form class="rename" method="post" action="/cameras/{{ cam.id }}/rename">
+      <input name="name" value="{{ cam.name or '' }}" placeholder="e.g. Jon's Hero 10">
+      <button type="submit">Rename</button>
+    </form>
+  </div>
+  {% endfor %}
+</div>
+
+</body>
+</html>

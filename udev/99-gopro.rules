@@ -1,0 +1,13 @@
+# /etc/udev/rules.d/99-gopro.rules  —  install on the Proxmox HOST
+#
+# Match the CDC-ECM network interface created when a GoPro is plugged in.
+# Using SUBSYSTEM=="net" (not "usb") means the interface is already up by the
+# time this fires, so gopro-connect.sh gets a ready-to-move interface name.
+#
+# ATTRS{idVendor} walks up the device tree to find the parent USB device.
+#
+# After installing:
+#   udevadm control --reload-rules && udevadm trigger
+
+ACTION=="add", SUBSYSTEM=="net", ATTRS{idVendor}=="2672", \
+    RUN+="/usr/local/bin/gopro-connect.sh %k"

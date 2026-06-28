@@ -1,0 +1,19 @@
+[project]
+name = "rushes"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "httpx>=0.27",
+    "jinja2>=3.1",
+    "python-multipart>=0.0.9",
+]
+
+[project.scripts]
+rushes-web    = "rushes.web.app:main"
+rushes-ingest = "rushes.ingest:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

@@ -1,0 +1,21 @@
+# Install inside the LXC container at /etc/systemd/system/rushes-web.service
+# Enable with: systemctl enable --now rushes-web
+
+[Unit]
+Description=Rushes web UI
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/rushes-web
+Restart=on-failure
+RestartSec=5
+Environment=RUSHES_DATA=/var/lib/rushes
+
+# Run as a dedicated user in production:
+#   useradd -r -s /sbin/nologin rushes
+#   chown -R rushes /var/lib/rushes
+# User=rushes
+
+[Install]
+WantedBy=multi-user.target
