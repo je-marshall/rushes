@@ -13,62 +13,76 @@ Plug in a GoPro, footage gets ingested, catalogued, and browsable on the TV.
 - `lxc-utils` (for `lxc-info`)
 - udev
 
-**In the LXC container:**
+**In the LXC container** — handled automatically by `install-container.sh`:
 - Python 3.11+
-- `ffmpeg` and `ffprobe`
-- `isc-dhcp-client` (`dhclient`)
-
-```
-apt install python3 python3-pip ffmpeg isc-dhcp-client
-pip install -e .
-```
+- `ffmpeg` / `ffprobe`
+- `isc-dhcp-client`
 
 ## Configuration
 
-All paths default to `/var/lib/rushes`. Override with the `RUSHES_DATA` environment variable.
+All paths default to `/var/lib/rushes`. Override with `RUSHES_DATA`.
 
-Jellyfin integration is optional. Set these in the environment (or in the systemd service file):
+Jellyfin integration is optional — pass the flags to the install script, or re-run it later:
 
 ```
-JELLYFIN_URL=http://localhost:8096
-JELLYFIN_TOKEN=your-api-key-from-jellyfin-dashboard
+--jellyfin-url   http://<jellyfin-host>:8096
+--jellyfin-token <api-key from Jellyfin dashboard → Administration → API Keys>
 ```
 
 ## Setup
 
-### 1. Install the host-side udev rule
+### 1. Install inside the LXC container
 
-From the repo root, on the **Proxmox host**:
+Clone the repo into the container and run the install script as root:
+
+```bash
+git clone git@github.com:je-marshall/rushes.git
+cd rushes
+sudo bash scripts/install-container.sh
+```
+
+With Jellyfin integration:
+
+```bash
+sudo bash scripts/install-container.sh \
+  --jellyfin-url http://192.168.1.x:8096 \
+  --jellyfin-token your-api-key
+```
+
+This installs system dependencies, creates a Python venv at `/opt/rushes-venv`, symlinks `rushes-ingest` to `/usr/local/bin/` (required for the host-side trigger), generates and enables the `rushes-web` systemd service.
+
+Web UI will be available at `http://<container-ip>:8765`.
+
+### 2. Install the host-side udev rule
+
+From the repo root, **on the Proxmox host**:
 
 ```bash
 sudo bash scripts/install-host.sh 100   # replace 100 with your container ID
 ```
 
-This installs `udev/99-gopro.rules` and `scripts/gopro-connect.sh`. When a GoPro is plugged in, the host moves its CDC-ECM network interface into the container's network namespace and triggers ingestion.
+This installs `udev/99-gopro.rules` and `scripts/gopro-connect.sh`. When a GoPro is plugged in, the host moves its CDC-ECM network interface into the container's network namespace and triggers ingestion — no USB passthrough required.
 
-See `docs/architecture.md` for why this works without USB passthrough.
-
-### 2. Start the web service
-
-In the **container**:
-
-```bash
-cp systemd/rushes-web.service /etc/systemd/system/
-systemctl enable --now rushes-web
-```
-
-Web UI is available at `http://<container-ip>:8765`.
+See `docs/architecture.md` for how this works.
 
 ### 3. Set up Jellyfin libraries
 
-Point two Jellyfin libraries at the footage directories:
+Point two Jellyfin libraries at the footage directories (library type: **Home Videos**):
 
 | Library name | Path |
 |---|---|
 | Unsorted Rushes | `/var/lib/rushes/footage/unsorted` |
 | Events | `/var/lib/rushes/footage/events` |
 
-Use library type **Home Videos** so Jellyfin doesn't try to match clips against external metadata.
+Home Videos skips external metadata scraping, which is what you want for action camera clips.
+
+### Updating
+
+```bash
+cd rushes && git pull
+sudo /opt/rushes-venv/bin/pip install -e .
+sudo systemctl restart rushes-web
+```
 
 ## Usage
 
@@ -96,8 +110,9 @@ rushes/              Python package
   web/templates/     Jinja2 HTML templates
 
 scripts/
-  gopro-connect.sh   Host-side: move interface to container, trigger ingest
-  install-host.sh    Install udev rule and trigger script on Proxmox host
+  install-container.sh  Install everything inside the LXC container
+  install-host.sh       Install udev rule and trigger script on Proxmox host
+  gopro-connect.sh      Host-side: move interface to container, trigger ingest
 
 udev/
   99-gopro.rules     Host udev rule (GoPro CDC-ECM interface detection)

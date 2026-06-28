@@ -15,7 +15,7 @@
 └───────────────┼─────────────────────────────────────────┘
                 │ network interface moved into container
 ┌───────────────▼─────────────────────────────────────────┐
-│  LXC container (privileged, CAP_NET_ADMIN)              │
+│  LXC container (needs CAP_NET_ADMIN)                    │
 │                                                         │
 │  rushes-ingest --interface usb0                         │
 │    netsetup.py                                          │
@@ -60,7 +60,11 @@ ip link set usb0 netns <container-init-pid>
 
 Network namespaces are a Linux kernel feature. The interface vanishes from the host and appears inside the container — no cgroup device permissions, no `/dev/bus/usb` mount required. The container only needs `CAP_NET_ADMIN` to accept the incoming interface, which a privileged LXC container has by default.
 
-This also works with an unprivileged container if you grant `CAP_NET_ADMIN` explicitly.
+This works with both privileged and unprivileged LXC containers. A privileged container has `CAP_NET_ADMIN` by default. For an unprivileged container, add to `/etc/pve/lxc/<CTID>.conf`:
+
+```
+lxc.cap.keep = net_admin
+```
 
 ## Multi-camera parallel ingestion
 
@@ -114,3 +118,25 @@ clips     id, filename, ingest_path, recorded_at, ingested_at,
 Jellyfin is pointed at `footage/unsorted/` and `footage/events/` as separate **Home Videos** libraries. When clips are assigned to or removed from events, Rushes calls `POST /Library/Refresh` on the Jellyfin API so libraries update immediately.
 
 Jellyfin integration is entirely optional and fail-safe — if the API is unreachable, ingest and the web UI are unaffected.
+
+## Deployment
+
+Two install scripts handle the full setup:
+
+### `scripts/install-container.sh` — run inside the LXC container
+
+1. Installs system packages: `ffmpeg`, `isc-dhcp-client`, `python3-venv`
+2. Creates a Python venv at `/opt/rushes-venv` and installs the package in editable mode
+3. Symlinks `rushes-ingest` → `/usr/local/bin/rushes-ingest` so `pct exec` from the host can find it
+4. Generates `/etc/systemd/system/rushes-web.service` with the correct venv path and any Jellyfin env vars baked in
+5. Enables and starts the service
+
+The package is installed with `pip install -e .` (editable), so updating is just `git pull` + `pip install -e .` + `systemctl restart rushes-web`.
+
+### `scripts/install-host.sh` — run on the Proxmox host
+
+1. Copies `scripts/gopro-connect.sh` to `/usr/local/bin/`, injecting the correct container ID
+2. Installs `udev/99-gopro.rules` to `/etc/udev/rules.d/`
+3. Reloads udev rules
+
+The host has no Python dependency — `gopro-connect.sh` is a plain bash script that calls `lxc-info`, `ip link set`, and `pct exec`.
