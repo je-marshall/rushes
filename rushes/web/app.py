@@ -38,8 +38,10 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Rushes", lifespan=lifespan)
-app.add_middleware(SessionMiddleware, secret_key=config.SECRET_KEY, max_age=60 * 60 * 24 * 30)
+# SessionMiddleware must be added last so it is outermost and runs first,
+# populating request.session before AuthMiddleware checks it.
 app.add_middleware(AuthMiddleware)
+app.add_middleware(SessionMiddleware, secret_key=config.SECRET_KEY, max_age=60 * 60 * 24 * 30)
 
 app.mount("/thumbs",   StaticFiles(directory=str(config.THUMB_DIR)),   name="thumbs")
 app.mount("/footage",  StaticFiles(directory=str(config.FOOTAGE_DIR)), name="footage")
