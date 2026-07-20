@@ -71,9 +71,14 @@ async def run(interface: str | None = None, serial_hint: str | None = None) -> N
         local_ip, camera_ip = netinfo if netinfo else (None, gopro.DEFAULT_CAMERA_IP)
 
         async with gopro.make_client(camera_ip, local_address=local_ip) as client:
-            # Hero 10 needs wired control enabled before it will serve the API.
+            # Hero 10 needs wired control enabled before it will serve the API,
+            # but some firmware returns 500 if it's already on — so this is
+            # best-effort. get_state() is the real reachability check.
             try:
                 await gopro.enable_wired_usb(client)
+            except httpx.HTTPError:
+                pass
+            try:
                 state = await gopro.get_state(client)
             except httpx.HTTPError as exc:
                 print(f"GoPro API unreachable at {camera_ip} on {interface or 'default route'}: {exc}", flush=True)
