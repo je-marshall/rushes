@@ -10,4 +10,4 @@
 #   udevadm control --reload-rules && udevadm trigger
 
 ACTION=="add", SUBSYSTEM=="net", ATTRS{idVendor}=="2672", \
-    RUN+="/usr/local/bin/gopro-connect.sh %k"
+    RUN+="/usr/local/bin/gopro-connect.sh $env{INTERFACE}"
