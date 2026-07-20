@@ -20,11 +20,17 @@ fi
 
 # The interface may have been renamed by udev (eth0 → enx...) between the
 # event firing and this script running. If the given name is gone, search
-# for the GoPro interface by vendor ID in sysfs.
+# for the GoPro interface by walking each net device's USB parent to idVendor.
 if ! ip link show "$INTERFACE" &>/dev/null; then
-    log "$INTERFACE not found — searching for GoPro interface by vendor ID"
-    for iface in $(ls /sys/class/net/); do
-        vid=$(find "/sys/class/net/$iface" -name idVendor -exec cat {} \; 2>/dev/null | head -1)
+    log "$INTERFACE not found — searching for GoPro interface by USB vendor ID"
+    for path in /sys/class/net/*; do
+        iface=$(basename "$path")
+        [[ "$iface" == "lo" ]] && continue
+        # /sys/class/net/<iface>/device → the USB interface (X-Y:A.B);
+        # its parent (X-Y) carries idVendor.
+        devlink=$(readlink -f "$path/device" 2>/dev/null) || continue
+        [[ -n "$devlink" ]] || continue
+        vid=$(cat "$devlink/../idVendor" 2>/dev/null || true)
         if [[ "$vid" == "2672" ]]; then
             log "found GoPro interface: $iface (was $INTERFACE)"
             INTERFACE="$iface"
