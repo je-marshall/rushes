@@ -84,9 +84,17 @@ python3 -m venv "$VENV"
 "$VENV/bin/pip" install --quiet --upgrade pip
 "$VENV/bin/pip" install --quiet -e "$REPO_DIR"
 
-# Symlink the ingest command — gopro-connect.sh on the host calls this via pct exec
-ln -sf "$VENV/bin/rushes-ingest" /usr/local/bin/rushes-ingest
-echo "    symlinked rushes-ingest → /usr/local/bin/rushes-ingest"
+# Install the ingest command as a WRAPPER (not a bare symlink). gopro-connect.sh
+# on the host calls this via `pct exec`, which does NOT inherit the systemd
+# service's Environment= vars — so we bake RUSHES_DATA in here. Otherwise ingest
+# would write to the default path while the web UI reads the configured one.
+cat > /usr/local/bin/rushes-ingest <<EOF
+#!/usr/bin/env bash
+export RUSHES_DATA='$RUSHES_DATA'
+exec "$VENV/bin/rushes-ingest" "\$@"
+EOF
+chmod +x /usr/local/bin/rushes-ingest
+echo "    installed rushes-ingest wrapper → /usr/local/bin/rushes-ingest (RUSHES_DATA=$RUSHES_DATA)"
 
 # ---------------------------------------------------------------------------
 # Data directory

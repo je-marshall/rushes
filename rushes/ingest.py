@@ -22,7 +22,7 @@ async def _pull_file(
     dest.parent.mkdir(parents=True, exist_ok=True)
 
     sha = hashlib.sha256()
-    async with client.stream("GET", mf.download_url) as resp:
+    async with client.stream("GET", mf.download_path) as resp:
         resp.raise_for_status()
         with open(dest, "wb") as fh:
             async for chunk in resp.aiter_bytes(65536):
@@ -51,51 +51,75 @@ async def _pull_file(
     print(f"  done  {mf.filename}", flush=True)
 
 
+async def _keep_alive_loop(client: httpx.AsyncClient) -> None:
+    """Ping the camera every few seconds so it can't sleep mid-ingest."""
+    while True:
+        await asyncio.sleep(gopro.KEEP_ALIVE_SECS)
+        try:
+            await gopro.keep_alive(client)
+        except Exception:
+            pass  # a missed keep-alive isn't fatal; the download will surface real errors
+
+
 async def run(interface: str | None = None, serial_hint: str | None = None) -> None:
     conn = db.connect()
     db.init_db(conn)
 
     ctx = netsetup.managed_interface(interface) if interface else _null_ctx()
 
-    with ctx as local_ip:
-        async with gopro.make_client(local_address=local_ip) as client:
+    with ctx as netinfo:
+        local_ip, camera_ip = netinfo if netinfo else (None, gopro.DEFAULT_CAMERA_IP)
+
+        async with gopro.make_client(camera_ip, local_address=local_ip) as client:
+            # Hero 10 needs wired control enabled before it will serve the API.
             try:
-                info = await gopro.get_camera_info(client)
+                await gopro.enable_wired_usb(client)
+                state = await gopro.get_state(client)
             except httpx.HTTPError as exc:
-                print(f"GoPro API unreachable on {interface or 'default route'}: {exc}", flush=True)
+                print(f"GoPro API unreachable at {camera_ip} on {interface or 'default route'}: {exc}", flush=True)
                 return
 
-            serial = info.get("serial_number") or serial_hint or "unknown"
-            model  = info.get("model_name", "GoPro")
-            print(f"Connected: {model} ({serial})", flush=True)
+            serial, model = gopro.identify(state)
+            serial = serial or serial_hint or "unknown"
+            print(f"Connected: {model} ({serial}) at {camera_ip}", flush=True)
 
-            camera_row = cameras.upsert(conn, serial, model)
-            cam_slug   = cameras.camera_slug(camera_row)
-            dest_dir   = config.UNSORTED_DIR / cam_slug
+            # Keep it awake for good, and for the duration of this ingest.
+            try:
+                await gopro.set_auto_power_off_never(client)
+            except httpx.HTTPError:
+                pass
+            keeper = asyncio.create_task(_keep_alive_loop(client))
 
-            media_files = await gopro.get_media_list(client)
-            print(f"Found {len(media_files)} MP4 files", flush=True)
+            try:
+                camera_row = cameras.upsert(conn, serial, model)
+                cam_slug   = cameras.camera_slug(camera_row)
+                dest_dir   = config.UNSORTED_DIR / cam_slug
 
-            tasks = []
-            for mf in media_files:
-                dest = dest_dir / mf.filename
-                if dest.exists():
-                    print(f"  skip  {mf.filename}", flush=True)
-                    continue
-                tasks.append((mf, dest))
+                media_files = await gopro.get_media_list(client)
+                print(f"Found {len(media_files)} MP4 files", flush=True)
 
-            sem = asyncio.Semaphore(2)
+                tasks = []
+                for mf in media_files:
+                    dest = dest_dir / mf.filename
+                    if dest.exists():
+                        print(f"  skip  {mf.filename}", flush=True)
+                        continue
+                    tasks.append((mf, dest))
 
-            async def pull_with_sem(mf, dest):
-                async with sem:
-                    try:
-                        await _pull_file(client, mf, dest, conn, camera_row)
-                    except Exception as exc:
-                        print(f"  ERROR {mf.filename}: {exc}", flush=True)
-                        dest.unlink(missing_ok=True)
+                sem = asyncio.Semaphore(2)
 
-            await asyncio.gather(*[pull_with_sem(mf, dest) for mf, dest in tasks])
-            print(f"Ingest complete: {model} ({serial})", flush=True)
+                async def pull_with_sem(mf, dest):
+                    async with sem:
+                        try:
+                            await _pull_file(client, mf, dest, conn, camera_row)
+                        except Exception as exc:
+                            print(f"  ERROR {mf.filename}: {exc}", flush=True)
+                            dest.unlink(missing_ok=True)
+
+                await asyncio.gather(*[pull_with_sem(mf, dest) for mf, dest in tasks])
+                print(f"Ingest complete: {model} ({serial})", flush=True)
+            finally:
+                keeper.cancel()
 
 
 class _null_ctx:
