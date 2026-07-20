@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 import secrets
 from pathlib import Path
+from urllib.parse import quote
 
 import uvicorn
 from fastapi import FastAPI, Form, Request
@@ -10,7 +11,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
-from .. import cameras, config, db, events as ev
+from .. import cameras, config, db, events as ev, settings
 
 _UNPROTECTED = {"/login"}
 
@@ -43,8 +44,9 @@ app = FastAPI(title="Rushes", lifespan=lifespan)
 app.add_middleware(AuthMiddleware)
 app.add_middleware(SessionMiddleware, secret_key=config.SECRET_KEY, max_age=60 * 60 * 24 * 30)
 
-app.mount("/thumbs",   StaticFiles(directory=str(config.THUMB_DIR)),   name="thumbs")
-app.mount("/footage",  StaticFiles(directory=str(config.FOOTAGE_DIR)), name="footage")
+# Only thumbnails are served by the web app. Footage playback is via Jellyfin,
+# and clips carry absolute paths so the footage root can be moved freely.
+app.mount("/thumbs", StaticFiles(directory=str(config.THUMB_DIR)), name="thumbs")
 
 _templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
@@ -165,6 +167,32 @@ async def rename_camera(camera_id: int, name: str = Form(...)):
     conn = db.connect()
     cameras.rename(conn, camera_id, name)
     return RedirectResponse("/cameras", status_code=303)
+
+
+# ---------------------------------------------------------------------------
+# Settings
+# ---------------------------------------------------------------------------
+
+@app.get("/settings", response_class=HTMLResponse)
+async def settings_page(request: Request, saved: bool = False, error: str = ""):
+    conn = db.connect()
+    return _templates.TemplateResponse(request, "settings.html", {
+        "footage_dir": str(settings.footage_dir(conn)),
+        "state_dir":   str(config.BASE_DIR),
+        "db_path":     str(config.DB_PATH),
+        "saved":       saved,
+        "error":       error,
+    })
+
+
+@app.post("/settings/footage")
+async def settings_footage(footage_dir: str = Form(...)):
+    conn = db.connect()
+    try:
+        settings.set_footage_dir(conn, footage_dir.strip())
+    except ValueError as exc:
+        return RedirectResponse(f"/settings?error={quote(str(exc))}", status_code=303)
+    return RedirectResponse("/settings?saved=true", status_code=303)
 
 
 # ---------------------------------------------------------------------------

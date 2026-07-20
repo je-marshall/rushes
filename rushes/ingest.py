@@ -1,13 +1,14 @@
 import argparse
 import asyncio
 import hashlib
+import os
 import subprocess
 from datetime import datetime
 from pathlib import Path
 
 import httpx
 
-from . import cameras, config, db, gopro, netsetup, thumbs
+from . import cameras, config, db, gopro, netsetup, settings, thumbs
 
 
 async def _pull_file(
@@ -21,13 +22,18 @@ async def _pull_file(
     print(f"  pull  {mf.filename} ({mb} MB)...", flush=True)
     dest.parent.mkdir(parents=True, exist_ok=True)
 
+    # Download to a .part file and atomically rename on success. A killed or
+    # failed download therefore never leaves a partial file at the final path
+    # that a later run would mistake for a completed clip.
+    part = dest.with_name(dest.name + ".part")
     sha = hashlib.sha256()
     async with client.stream("GET", mf.download_path) as resp:
         resp.raise_for_status()
-        with open(dest, "wb") as fh:
+        with open(part, "wb") as fh:
             async for chunk in resp.aiter_bytes(65536):
                 fh.write(chunk)
                 sha.update(chunk)
+    os.replace(part, dest)
 
     checksum   = sha.hexdigest()
     thumb_path = await thumbs.generate(dest)
@@ -98,7 +104,7 @@ async def run(interface: str | None = None, serial_hint: str | None = None) -> N
             try:
                 camera_row = cameras.upsert(conn, serial, model)
                 cam_slug   = cameras.camera_slug(camera_row)
-                dest_dir   = config.UNSORTED_DIR / cam_slug
+                dest_dir   = settings.unsorted_dir(conn) / cam_slug
 
                 media_files = await gopro.get_media_list(client)
                 print(f"Found {len(media_files)} MP4 files", flush=True)
@@ -120,6 +126,7 @@ async def run(interface: str | None = None, serial_hint: str | None = None) -> N
                         except Exception as exc:
                             print(f"  ERROR {mf.filename}: {exc}", flush=True)
                             dest.unlink(missing_ok=True)
+                            dest.with_name(dest.name + ".part").unlink(missing_ok=True)
 
                 await asyncio.gather(*[pull_with_sem(mf, dest) for mf, dest in tasks])
                 print(f"Ingest complete: {model} ({serial})", flush=True)

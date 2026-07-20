@@ -6,7 +6,7 @@ import shutil
 import sqlite3
 from pathlib import Path
 
-from . import config, jellyfin
+from . import jellyfin, settings
 from .cameras import camera_slug
 from .slug import slugify
 
@@ -34,7 +34,7 @@ def assign_clips(conn: sqlite3.Connection, clip_ids: list[int], event_id: int) -
         clip   = conn.execute("SELECT * FROM clips WHERE id = ?",   (clip_id,)).fetchone()
         camera = conn.execute("SELECT * FROM cameras WHERE id = ?", (clip["camera_id"],)).fetchone()
 
-        dest_dir = config.EVENTS_DIR / event["slug"] / camera_slug(camera)
+        dest_dir = settings.events_dir(conn) / event["slug"] / camera_slug(camera)
         dest_dir.mkdir(parents=True, exist_ok=True)
         dest = dest_dir / clip["filename"]
 
@@ -55,7 +55,7 @@ def unassign_clips(conn: sqlite3.Connection, clip_ids: list[int]) -> None:
         clip   = conn.execute("SELECT * FROM clips WHERE id = ?",   (clip_id,)).fetchone()
         camera = conn.execute("SELECT * FROM cameras WHERE id = ?", (clip["camera_id"],)).fetchone()
 
-        dest_dir = config.UNSORTED_DIR / camera_slug(camera)
+        dest_dir = settings.unsorted_dir(conn) / camera_slug(camera)
         dest_dir.mkdir(parents=True, exist_ok=True)
         dest = dest_dir / clip["filename"]
 

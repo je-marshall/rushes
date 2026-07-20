@@ -8,7 +8,7 @@ import sqlite3
 from datetime import datetime
 from pathlib import Path
 
-from . import config
+from . import settings
 from .slug import slugify
 
 
@@ -44,8 +44,9 @@ def rename(conn: sqlite3.Connection, camera_id: int, new_name: str) -> None:
     old_slug = camera_slug(camera)
     new_slug  = slugify(new_name)
 
-    old_dir = config.UNSORTED_DIR / old_slug
-    new_dir = config.UNSORTED_DIR / new_slug
+    unsorted = settings.unsorted_dir(conn)
+    old_dir  = unsorted / old_slug
+    new_dir  = unsorted / new_slug
 
     if old_dir.exists() and old_dir != new_dir:
         if new_dir.exists():

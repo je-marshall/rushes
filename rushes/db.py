@@ -50,5 +50,10 @@ def init_db(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_clips_recorded ON clips(recorded_at);
         CREATE INDEX IF NOT EXISTS idx_clips_camera   ON clips(camera_id);
         CREATE INDEX IF NOT EXISTS idx_clips_event    ON clips(event_id);
+
+        CREATE TABLE IF NOT EXISTS settings (
+            key   TEXT PRIMARY KEY,
+            value TEXT
+        );
     """)
     conn.commit()
