@@ -51,12 +51,25 @@ button:hover { background: #3a7acf; }
 .banner.ok  { background: #123020; border: 1px solid #1f5a3a; color: #7fdca8; }
 .banner.err { background: #3a1518; border: 1px solid #6a2530; color: #f0a0a8; }
 .note { color: #777; font-size: 0.78rem; margin-top: 0.6rem; line-height: 1.5; }
+
+/* Mobile: collapse nav into a burger menu */
+.burger { display: none; background: none; border: none; color: #ccc; font-size: 1.5rem; cursor: pointer; padding: 0.2rem 0.5rem; line-height: 1; }
+@media (max-width: 680px) {
+  header { flex-wrap: wrap; gap: 0.5rem 1rem; }
+  .burger { display: block; margin-left: auto; }
+  nav { display: none; flex-direction: column; width: 100%; gap: 0.15rem; }
+  nav a { display: block; }
+  header > form[action="/logout"] { display: none; width: 100%; margin-left: 0; }
+  body.nav-open nav { display: flex; }
+  body.nav-open header > form[action="/logout"] { display: block; }
+}
 </style>
 </head>
 <body>
 
 <header>
   <h1>Rushes</h1>
+  <button class="burger" type="button" aria-label="Menu" onclick="document.body.classList.toggle('nav-open')">☰</button>
   <nav>
     <a href="/">Unsorted</a>
     <a href="/events">Events</a>

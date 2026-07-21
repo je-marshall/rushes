@@ -99,12 +99,27 @@ body.select-mode .play-btn { display: none; }
 #player-video { width: min(90vw, 1600px); max-height: 80vh; background: #000; border-radius: 6px; display: block; }
 #player-error { display: none; background: #1a1a1a; border: 1px solid #3a1518; color: #f0a0a8; padding: 1.5rem; border-radius: 6px; max-width: 30rem; text-align: center; font-size: 0.9rem; line-height: 1.6; }
 #player-error a { color: #aad4ff; }
+
+/* Mobile: collapse nav into a burger menu */
+.burger { display: none; background: none; border: none; color: #ccc; font-size: 1.5rem; cursor: pointer; padding: 0.2rem 0.5rem; line-height: 1; }
+@media (max-width: 680px) {
+  header { flex-wrap: wrap; gap: 0.5rem 1rem; }
+  .burger { display: block; margin-left: auto; }
+  nav { display: none; flex-direction: column; width: 100%; gap: 0.15rem; }
+  nav a { display: block; }
+  header > form[action="/logout"] { display: none; width: 100%; margin-left: 0; }
+  body.nav-open nav { display: flex; }
+  body.nav-open header > form[action="/logout"] { display: block; }
+  #assign-bar { flex-wrap: wrap; }
+  #deselect-btn { margin-left: 0; }
+}
 </style>
 </head>
 <body>
 
 <header>
   <h1>Rushes</h1>
+  <button class="burger" type="button" aria-label="Menu" onclick="document.body.classList.toggle('nav-open')">☰</button>
   <nav>
     <a href="/"               {% if not favourite and not flagged %}class="active"{% endif %}>Unsorted</a>
     <a href="/?favourite=true" {% if favourite %}class="active"{% endif %}>★ Favourites</a>

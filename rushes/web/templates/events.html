@@ -87,12 +87,25 @@ nav a.active { background: #333; color: #fff; }
   padding: 0.3rem 0.7rem; border-radius: 4px; cursor: pointer; font-size: 0.8rem;
 }
 .empty-event { color: #444; font-size: 0.85rem; padding: 1rem 0; }
+
+/* Mobile: collapse nav into a burger menu */
+.burger { display: none; background: none; border: none; color: #ccc; font-size: 1.5rem; cursor: pointer; padding: 0.2rem 0.5rem; line-height: 1; }
+@media (max-width: 680px) {
+  header { flex-wrap: wrap; gap: 0.5rem 1rem; }
+  .burger { display: block; margin-left: auto; }
+  nav { display: none; flex-direction: column; width: 100%; gap: 0.15rem; }
+  nav a { display: block; }
+  header > form[action="/logout"] { display: none; width: 100%; margin-left: 0; }
+  body.nav-open nav { display: flex; }
+  body.nav-open header > form[action="/logout"] { display: block; }
+}
 </style>
 </head>
 <body>
 
 <header>
   <h1>Rushes</h1>
+  <button class="burger" type="button" aria-label="Menu" onclick="document.body.classList.toggle('nav-open')">☰</button>
   <nav>
     <a href="/">Unsorted</a>
     <a href="/?favourite=true">★ Favourites</a>

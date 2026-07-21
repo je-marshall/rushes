@@ -114,6 +114,14 @@ Supporting photos means extending the model: no duration, the photo *is* its own
 thumbnail (downscale rather than extract-a-frame), and playback/display differs
 from clips. Doable but a deliberate data-model change — design before building.
 
+### 3d. Timestamp-fix tool (NEW)
+recorded_at now uses recording metadata only (no mtime guess); missing/implausible
+dates are left NULL ("Undated"). Cameras with a wrong clock (e.g. this Hero 10
+reports 2016) still get wrong-but-old dates. Build a tool to bulk-correct dates:
+e.g. set/offset a camera's clip dates, or infer from filename/order/import batch.
+Note: re-importing existing files won't update dates (checksum-dedup skips them),
+so the fix tool must UPDATE in place.
+
 ### 4. Cold plug-and-forget test
 The 2026-07-21 success used the interface already in the container. Do one real
 unplug → wait → replug to confirm the whole chain fires from a fresh USB
