@@ -107,8 +107,9 @@ mkdir -p "$RUSHES_DATA"
 # ---------------------------------------------------------------------------
 echo "==> Installing rushes-web systemd service"
 
-# Build the Environment= lines
-ENV_LINES="Environment=RUSHES_DATA=$RUSHES_DATA"
+# Build the Environment= lines. PYTHONUNBUFFERED so logs reach the journal live.
+ENV_LINES="Environment=PYTHONUNBUFFERED=1"
+ENV_LINES+=$'\n'"Environment=RUSHES_DATA=$RUSHES_DATA"
 ENV_LINES+=$'\n'"Environment=RUSHES_SECRET_KEY=$SECRET_KEY"
 ENV_LINES+=$'\n'"Environment=RUSHES_USERNAME=$AUTH_USERNAME"
 ENV_LINES+=$'\n'"Environment=RUSHES_PASSWORD=$AUTH_PASSWORD"
@@ -131,9 +132,28 @@ $ENV_LINES
 WantedBy=multi-user.target
 EOF
 
+# The self-healing ingest daemon. Needs RUSHES_DATA (DB location) and unbuffered
+# output; it manages interfaces + DHCP so it runs as root (the container's root).
+cat > /etc/systemd/system/rushes-watch.service <<EOF
+[Unit]
+Description=Rushes GoPro ingest watcher
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=$VENV/bin/rushes-watch
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+Environment=RUSHES_DATA=$RUSHES_DATA
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
 systemctl daemon-reload
-systemctl enable rushes-web
-systemctl restart rushes-web
+systemctl enable rushes-web rushes-watch
+systemctl restart rushes-web rushes-watch
 
 # ---------------------------------------------------------------------------
 # Done
@@ -145,7 +165,8 @@ echo "All done."
 echo ""
 echo "  Web UI:  http://${LOCAL_IP}:8765"
 echo "  Data:    $RUSHES_DATA"
-echo "  Logs:    journalctl -u rushes-web -f"
+echo "  Logs:    journalctl -u rushes-web -f       (web UI)"
+echo "           journalctl -u rushes-watch -f     (GoPro ingest daemon)"
 echo ""
 
 if [[ -z "$JELLYFIN_URL" ]]; then
@@ -157,5 +178,5 @@ if [[ -z "$JELLYFIN_URL" ]]; then
 fi
 
 echo "  To update after a git pull:"
-echo "    $VENV/bin/pip install -e $REPO_DIR && systemctl restart rushes-web"
+echo "    $VENV/bin/pip install -e $REPO_DIR && systemctl restart rushes-web rushes-watch"
 echo ""

@@ -50,15 +50,7 @@ if ! ip link set "$INTERFACE" netns "$CT_PID"; then
     exit 1
 fi
 
-# Launch ingest as a transient systemd unit INSIDE the container. This detaches
-# it from systemd-udevd (which would otherwise kill this RUN's children when the
-# event completes — mid-download) and logs it to the container journal so it can
-# be tailed. --collect clears the unit afterwards so a re-plug can reuse the name.
-UNIT="rushes-ingest-$INTERFACE"
-log "triggering ingest for $INTERFACE as unit $UNIT inside container $CTID"
-if pct exec "$CTID" -- systemd-run --collect --unit="$UNIT" \
-        /usr/local/bin/rushes-ingest --interface "$INTERFACE"; then
-    log "ingest started — tail with: pct exec $CTID -- journalctl -fu $UNIT"
-else
-    log "ERROR: could not start $UNIT (already ingesting this camera?)"
-fi
+# That's all the host does. The rushes-watch daemon inside the container detects
+# the interface, waits for the camera to be ready, and ingests — with retries —
+# so we no longer race the camera's boot time or risk udev killing a download.
+log "moved — rushes-watch in container $CTID will pick it up (tail: pct exec $CTID -- journalctl -fu rushes-watch)"

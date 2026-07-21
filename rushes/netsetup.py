@@ -17,6 +17,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 _ROUTE_TABLE_BASE = 200
+_DHCP_TIMEOUT = 25  # seconds — dhclient must not hang forever when the camera is asleep
 
 # Minimal dhclient config: ask only for the address details, never routers or
 # DNS, so dhclient can't overwrite the container's default route / resolv.conf.
@@ -66,15 +67,25 @@ def bring_up(interface: str) -> tuple[str, str, int]:
     Returns (local_ip, camera_ip, routing_table_id) for teardown.
     Raises RuntimeError if DHCP fails.
     """
-    print(f"netsetup: link up {interface}")
+    print(f"netsetup: link up {interface}", flush=True)
     _run(["ip", "link", "set", interface, "up"])
-    # Idempotent: clear any stale lease so a retry doesn't hit "already assigned".
+    # Idempotent: kill any stale dhclient on this interface and clear its lease so
+    # a retry doesn't hit "already assigned" or fight another client.
+    _run(["pkill", "-f", f"dhclient.*{interface}"], check=False)
     _run(["ip", "addr", "flush", "dev", interface], check=False)
 
     Path(_DHCLIENT_CONF).write_text(_DHCLIENT_CONF_BODY)
 
-    print(f"netsetup: DHCP on {interface}")
-    _run(["dhclient", "-1", "-cf", _DHCLIENT_CONF, interface])
+    # Bounded: dhclient -1 gives up after one lease attempt, but we still cap it
+    # with a hard timeout so an asleep camera (no DHCP server) can't hang ingest.
+    print(f"netsetup: DHCP on {interface} (<= {_DHCP_TIMEOUT}s)", flush=True)
+    try:
+        subprocess.run(
+            ["dhclient", "-1", "-cf", _DHCLIENT_CONF, interface],
+            capture_output=True, timeout=_DHCP_TIMEOUT,
+        )
+    except subprocess.TimeoutExpired:
+        _run(["pkill", "-f", f"dhclient.*{interface}"], check=False)
 
     # Belt-and-suspenders: if dhclient still installed a default route via the
     # camera, remove it — the GoPro must never become the container's gateway.
@@ -84,14 +95,14 @@ def bring_up(interface: str) -> tuple[str, str, int]:
 
     local_ip = _local_ip(interface)
     if not local_ip:
-        raise RuntimeError(f"DHCP on {interface} did not produce an IP")
+        raise RuntimeError(f"DHCP on {interface} did not produce an IP (camera asleep?)")
     camera_ip = _camera_ip(local_ip)
 
     table = _next_table()
     _run(["ip", "route", "add", camera_ip, "dev", interface, "table", str(table)], check=False)
     _run(["ip", "rule",  "add", "from", local_ip, "lookup", str(table)], check=False)
 
-    print(f"netsetup: {interface} → host {local_ip}, camera {camera_ip}, table {table}")
+    print(f"netsetup: {interface} → host {local_ip}, camera {camera_ip}, table {table}", flush=True)
     return local_ip, camera_ip, table
 
 
@@ -99,8 +110,9 @@ def tear_down(interface: str, local_ip: str, camera_ip: str, table: int) -> None
     _run(["ip", "rule",  "del", "from",  local_ip, "lookup", str(table)], check=False)
     _run(["ip", "route", "del", camera_ip, "dev", interface, "table", str(table)], check=False)
     _run(["dhclient", "-r", interface], check=False)
+    _run(["pkill", "-f", f"dhclient.*{interface}"], check=False)
     _run(["ip", "link", "set", interface, "down"], check=False)
-    print(f"netsetup: cleaned up {interface}")
+    print(f"netsetup: cleaned up {interface}", flush=True)
 
 
 @contextmanager

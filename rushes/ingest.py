@@ -8,7 +8,7 @@ from pathlib import Path
 
 import httpx
 
-from . import cameras, config, db, gopro, netsetup, settings, thumbs
+from . import cameras, db, gopro, netsetup, settings, thumbs
 
 
 async def _pull_file(
@@ -57,14 +57,65 @@ async def _pull_file(
     print(f"  done  {mf.filename}", flush=True)
 
 
-async def _keep_alive_loop(client: httpx.AsyncClient) -> None:
-    """Ping the camera every few seconds so it can't sleep mid-ingest."""
+async def keep_alive_loop(client: httpx.AsyncClient) -> None:
+    """Ping the camera every few seconds so it can't sleep."""
     while True:
         await asyncio.sleep(gopro.KEEP_ALIVE_SECS)
         try:
             await gopro.keep_alive(client)
         except Exception:
-            pass  # a missed keep-alive isn't fatal; the download will surface real errors
+            pass  # a missed keep-alive isn't fatal; real errors surface elsewhere
+
+
+async def connect(client: httpx.AsyncClient) -> dict:
+    """
+    Bring the camera to a usable state and return its state dict.
+    Raises httpx.HTTPError if the camera can't be reached.
+    Enabling wired control is best-effort (Hero 10 500s if already on); the
+    get_state() call is the real reachability check.
+    """
+    try:
+        await gopro.enable_wired_usb(client)
+    except httpx.HTTPError:
+        pass
+    return await gopro.get_state(client)
+
+
+async def pull_all(conn, client: httpx.AsyncClient, serial: str, model: str) -> tuple[int, int]:
+    """
+    Pull every not-yet-downloaded MP4 for this camera into its unsorted folder.
+    Returns (files_on_camera, files_pulled_this_call). Reusable by the CLI and
+    the watch daemon; safe to call repeatedly (existing files are skipped).
+    """
+    camera_row = cameras.upsert(conn, serial, model)
+    cam_slug   = cameras.camera_slug(camera_row)
+    dest_dir   = settings.unsorted_dir(conn) / cam_slug
+
+    media_files = await gopro.get_media_list(client)
+
+    tasks = []
+    for mf in media_files:
+        dest = dest_dir / mf.filename
+        if dest.exists():
+            continue
+        tasks.append((mf, dest))
+
+    sem    = asyncio.Semaphore(2)
+    pulled = 0
+
+    async def pull_with_sem(mf, dest):
+        nonlocal pulled
+        async with sem:
+            try:
+                await _pull_file(client, mf, dest, conn, camera_row)
+                pulled += 1
+            except Exception as exc:
+                print(f"  ERROR {mf.filename}: {exc}", flush=True)
+                dest.unlink(missing_ok=True)
+                dest.with_name(dest.name + ".part").unlink(missing_ok=True)
+
+    await asyncio.gather(*[pull_with_sem(mf, dest) for mf, dest in tasks])
+    return len(media_files), pulled
 
 
 async def run(interface: str | None = None, serial_hint: str | None = None) -> None:
@@ -77,15 +128,8 @@ async def run(interface: str | None = None, serial_hint: str | None = None) -> N
         local_ip, camera_ip = netinfo if netinfo else (None, gopro.DEFAULT_CAMERA_IP)
 
         async with gopro.make_client(camera_ip, local_address=local_ip) as client:
-            # Hero 10 needs wired control enabled before it will serve the API,
-            # but some firmware returns 500 if it's already on — so this is
-            # best-effort. get_state() is the real reachability check.
             try:
-                await gopro.enable_wired_usb(client)
-            except httpx.HTTPError:
-                pass
-            try:
-                state = await gopro.get_state(client)
+                state = await connect(client)
             except httpx.HTTPError as exc:
                 print(f"GoPro API unreachable at {camera_ip} on {interface or 'default route'}: {exc}", flush=True)
                 return
@@ -94,42 +138,14 @@ async def run(interface: str | None = None, serial_hint: str | None = None) -> N
             serial = serial or serial_hint or "unknown"
             print(f"Connected: {model} ({serial}) at {camera_ip}", flush=True)
 
-            # Keep it awake for good, and for the duration of this ingest.
             try:
                 await gopro.set_auto_power_off_never(client)
             except httpx.HTTPError:
                 pass
-            keeper = asyncio.create_task(_keep_alive_loop(client))
-
+            keeper = asyncio.create_task(keep_alive_loop(client))
             try:
-                camera_row = cameras.upsert(conn, serial, model)
-                cam_slug   = cameras.camera_slug(camera_row)
-                dest_dir   = settings.unsorted_dir(conn) / cam_slug
-
-                media_files = await gopro.get_media_list(client)
-                print(f"Found {len(media_files)} MP4 files", flush=True)
-
-                tasks = []
-                for mf in media_files:
-                    dest = dest_dir / mf.filename
-                    if dest.exists():
-                        print(f"  skip  {mf.filename}", flush=True)
-                        continue
-                    tasks.append((mf, dest))
-
-                sem = asyncio.Semaphore(2)
-
-                async def pull_with_sem(mf, dest):
-                    async with sem:
-                        try:
-                            await _pull_file(client, mf, dest, conn, camera_row)
-                        except Exception as exc:
-                            print(f"  ERROR {mf.filename}: {exc}", flush=True)
-                            dest.unlink(missing_ok=True)
-                            dest.with_name(dest.name + ".part").unlink(missing_ok=True)
-
-                await asyncio.gather(*[pull_with_sem(mf, dest) for mf, dest in tasks])
-                print(f"Ingest complete: {model} ({serial})", flush=True)
+                found, pulled = await pull_all(conn, client, serial, model)
+                print(f"Ingest complete: {model} ({serial}) — {pulled} new / {found} on camera", flush=True)
             finally:
                 keeper.cancel()
 

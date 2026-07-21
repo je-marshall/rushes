@@ -14,6 +14,7 @@ dependencies = [
 [project.scripts]
 rushes-web    = "rushes.web.app:main"
 rushes-ingest = "rushes.ingest:main"
+rushes-watch  = "rushes.watch:main"
 
 [build-system]
 requires = ["hatchling"]
