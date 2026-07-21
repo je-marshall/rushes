@@ -95,6 +95,12 @@ Import a directory of old .MP4s as clips, attributed to the right camera.
 - Add `exiftool` to the apt deps in `install-container.sh` if used (else parse
   GPMF via a lib). Copy, don't move, the originals.
 
+### 3c. Import GoPro photos (NEW, optional)
+Bulk import currently handles video (.MP4) only; .JPG/.GPR photos are skipped.
+Supporting photos means extending the model: no duration, the photo *is* its own
+thumbnail (downscale rather than extract-a-frame), and playback/display differs
+from clips. Doable but a deliberate data-model change — design before building.
+
 ### 4. Cold plug-and-forget test
 The 2026-07-21 success used the interface already in the container. Do one real
 unplug → wait → replug to confirm the whole chain fires from a fresh USB

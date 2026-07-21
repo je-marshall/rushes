@@ -3,9 +3,8 @@ import secrets
 from pathlib import Path
 from urllib.parse import quote
 
-import uvicorn
 from fastapi import FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -55,13 +54,10 @@ _templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 # Clips — unsorted view
 # ---------------------------------------------------------------------------
 
-@app.get("/", response_class=HTMLResponse)
-async def index(request: Request, favourite: bool = False, flagged: bool = False):
-    conn  = db.connect()
+def _query_unsorted(conn, favourite: bool, flagged: bool) -> list[dict]:
     where = ["c.event_id IS NULL"]
     if favourite: where.append("c.is_favourite = 1")
     if flagged:   where.append("c.flagged = 1")
-
     rows = conn.execute(f"""
         SELECT c.*, cam.name AS camera_name, cam.slug AS camera_slug
         FROM clips c
@@ -69,14 +65,38 @@ async def index(request: Request, favourite: bool = False, flagged: bool = False
         WHERE {' AND '.join(where)}
         ORDER BY c.recorded_at DESC NULLS LAST
     """).fetchall()
+    return _enrich_clips(rows)
 
-    clips       = _enrich_clips(rows)
-    all_events  = conn.execute("SELECT * FROM events ORDER BY created_at DESC").fetchall()
+
+@app.get("/", response_class=HTMLResponse)
+async def index(request: Request, favourite: bool = False, flagged: bool = False):
+    # The grid is populated + kept live by JS via /api/unsorted.json; here we
+    # just render the shell and the events list for the assign dropdown.
+    conn       = db.connect()
+    all_events = conn.execute("SELECT * FROM events ORDER BY created_at DESC").fetchall()
     return _templates.TemplateResponse(request, "index.html", {
-        "clips": clips,
         "favourite": favourite, "flagged": flagged,
         "all_events": all_events,
     })
+
+
+@app.get("/api/unsorted.json")
+async def unsorted_json(favourite: bool = False, flagged: bool = False):
+    conn = db.connect()
+    return {"clips": _query_unsorted(conn, favourite, flagged)}
+
+
+@app.get("/clip/{clip_id}/video")
+async def clip_video(clip_id: int):
+    conn = db.connect()
+    row  = conn.execute("SELECT ingest_path, filename FROM clips WHERE id = ?", (clip_id,)).fetchone()
+    if not row:
+        return HTMLResponse("clip not found", status_code=404)
+    path = Path(row["ingest_path"])
+    if not path.exists():
+        return HTMLResponse("file missing", status_code=404)
+    # FileResponse honours Range requests, so the browser can seek.
+    return FileResponse(str(path), media_type="video/mp4", filename=row["filename"])
 
 
 @app.post("/clips/assign")
@@ -277,9 +297,11 @@ def _enrich_clips(rows) -> list[dict]:
             if c.get("thumbnail_path") else None
         )
         c["display_camera"] = c.get("camera_name") or c.get("camera_slug") or c.get("camera_serial", "?")
+        c["video_url"] = f"/clip/{c['id']}/video"
         result.append(c)
     return result
 
 
 def main() -> None:
+    import uvicorn
     uvicorn.run("rushes.web.app:app", host="0.0.0.0", port=8765, reload=False)

@@ -11,88 +11,80 @@ body { background: #0f0f0f; color: #e0e0e0; font-family: system-ui, sans-serif; 
 header {
   position: sticky; top: 0; z-index: 20;
   background: #1a1a1a; border-bottom: 1px solid #2a2a2a;
-  padding: 0.75rem 1.5rem;
-  display: flex; align-items: center; gap: 1.5rem;
+  padding: 0.75rem 1.5rem; display: flex; align-items: center; gap: 1.5rem;
 }
 header h1 { font-size: 1.1rem; font-weight: 600; color: #fff; }
 nav { display: flex; gap: 0.5rem; }
-nav a {
-  color: #888; text-decoration: none;
-  padding: 0.3rem 0.75rem; border-radius: 999px; font-size: 0.85rem;
-}
+nav a { color: #888; text-decoration: none; padding: 0.3rem 0.75rem; border-radius: 999px; font-size: 0.85rem; }
 nav a:hover  { background: #2a2a2a; color: #ddd; }
 nav a.active { background: #333; color: #fff; }
 
-/* Assign bar — shown when clips are selected */
 #assign-bar {
   display: none;
   position: sticky; top: 53px; z-index: 19;
   background: #1e3a5f; border-bottom: 1px solid #2a5a8f;
-  padding: 0.6rem 1.5rem;
-  align-items: center; gap: 1rem;
+  padding: 0.6rem 1.5rem; align-items: center; gap: 1rem;
 }
 #assign-bar.visible { display: flex; }
 #assign-bar span { font-size: 0.85rem; color: #aad4ff; }
-#assign-bar select {
-  background: #0f2a45; border: 1px solid #2a5a8f; color: #eee;
-  padding: 0.3rem 0.6rem; border-radius: 4px; font-size: 0.85rem;
-}
-#assign-bar button {
-  background: #2a6abf; border: none; color: #fff;
-  padding: 0.35rem 0.8rem; border-radius: 4px; cursor: pointer; font-size: 0.85rem;
-}
+#assign-bar select { background: #0f2a45; border: 1px solid #2a5a8f; color: #eee; padding: 0.3rem 0.6rem; border-radius: 4px; font-size: 0.85rem; }
+#assign-bar button { background: #2a6abf; border: none; color: #fff; padding: 0.35rem 0.8rem; border-radius: 4px; cursor: pointer; font-size: 0.85rem; }
 #assign-bar button:hover { background: #3a7acf; }
-#deselect-btn {
-  background: transparent; border: 1px solid #2a5a8f; color: #aad4ff;
-  padding: 0.3rem 0.6rem; border-radius: 4px; cursor: pointer; font-size: 0.8rem; margin-left: auto;
-}
+#deselect-btn { background: transparent; border: 1px solid #2a5a8f; color: #aad4ff; padding: 0.3rem 0.6rem; border-radius: 4px; cursor: pointer; font-size: 0.8rem; margin-left: auto; }
 
 .empty { text-align: center; color: #555; margin-top: 6rem; }
 
-.grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 1px; background: #1a1a1a; margin: 1px;
-}
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1px; background: #1a1a1a; margin: 1px; }
 
-.clip {
-  background: #0f0f0f;
-  display: flex; flex-direction: column;
-  cursor: pointer;
-  transition: outline 0.05s;
-  outline: 2px solid transparent;
-}
+.clip { background: #0f0f0f; display: flex; flex-direction: column; outline: 2px solid transparent; transition: outline 0.05s; }
 .clip.selected { outline: 2px solid #2a6abf; }
 
-.thumb-wrap {
-  position: relative; aspect-ratio: 16/9;
-  background: #1a1a1a; overflow: hidden;
-}
+.thumb-wrap { position: relative; aspect-ratio: 16/9; background: #1a1a1a; overflow: hidden; }
 .thumb-wrap img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.thumb-wrap .no-thumb {
-  width: 100%; height: 100%;
+.thumb-wrap .no-thumb { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: #333; font-size: 2rem; }
+
+/* Floating play button — normal mode, on hover */
+.play-btn {
+  position: absolute; inset: 0; margin: auto;
+  width: 3.2rem; height: 3.2rem; border-radius: 50%;
+  border: none; cursor: pointer;
+  background: rgba(0,0,0,0.55); color: #fff; font-size: 1.2rem;
   display: flex; align-items: center; justify-content: center;
-  color: #333; font-size: 2rem;
+  opacity: 0; transition: opacity 0.12s, background 0.12s;
 }
-.select-tick {
-  display: none;
-  position: absolute; top: 0.4rem; left: 0.4rem;
-  width: 1.4rem; height: 1.4rem; border-radius: 50%;
-  background: #2a6abf; align-items: center; justify-content: center;
-  font-size: 0.75rem; color: #fff;
+.play-btn:hover { background: rgba(42,106,191,0.9); }
+.thumb-wrap:hover .play-btn { opacity: 1; }
+body.select-mode .play-btn { display: none; }   /* no play affordance while selecting */
+
+/* Selection checkbox — top-right corner */
+.checkbox {
+  position: absolute; top: 0.45rem; right: 0.45rem;
+  width: 1.5rem; height: 1.5rem; border-radius: 5px;
+  border: 2px solid rgba(255,255,255,0.8); background: rgba(0,0,0,0.35);
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  color: #fff; font-size: 0.9rem; line-height: 1;
+  opacity: 0; transition: opacity 0.12s;
 }
-.clip.selected .select-tick { display: flex; }
+.checkbox::after { content: "✓"; opacity: 0; }
+.thumb-wrap:hover .checkbox,
+body.select-mode .checkbox { opacity: 1; }
+.clip.selected .checkbox { background: #2a6abf; border-color: #2a6abf; opacity: 1; }
+.clip.selected .checkbox::after { opacity: 1; }
 
 .clip-info { padding: 0.6rem 0.75rem 0.75rem; flex: 1; display: flex; flex-direction: column; gap: 0.3rem; }
 .clip-name { font-size: 0.8rem; color: #bbb; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .clip-meta { font-size: 0.72rem; color: #555; display: flex; gap: 0.5rem; flex-wrap: wrap; }
 .clip-actions { display: flex; gap: 0.4rem; margin-top: auto; padding-top: 0.5rem; }
-.btn {
-  background: #1e1e1e; border: 1px solid #2a2a2a; color: #888;
-  padding: 0.3rem 0.65rem; border-radius: 4px; cursor: pointer; font-size: 0.75rem;
-}
+.btn { background: #1e1e1e; border: 1px solid #2a2a2a; color: #888; padding: 0.3rem 0.65rem; border-radius: 4px; cursor: pointer; font-size: 0.75rem; }
 .btn:hover  { background: #2a2a2a; color: #ccc; }
 .btn.active { background: #2a2a2a; border-color: #555; color: #fff; }
+
+/* Player overlay */
+#player { display: none; position: fixed; inset: 0; z-index: 40; background: rgba(0,0,0,0.85); align-items: center; justify-content: center; padding: 2rem; }
+#player.visible { display: flex; }
+#player video { max-width: 100%; max-height: 100%; border-radius: 6px; background: #000; outline: none; }
+#player-close { position: absolute; top: 1rem; right: 1.25rem; background: none; border: none; color: #ccc; font-size: 1.6rem; cursor: pointer; }
+#player-close:hover { color: #fff; }
 </style>
 </head>
 <body>
@@ -125,75 +117,145 @@ nav a.active { background: #333; color: #fff; }
     </select>
     <button type="submit">Move</button>
   </form>
-  <button id="deselect-btn" onclick="clearSelection()">✕ Deselect all</button>
+  <button id="deselect-btn" type="button" onclick="clearSelection()">✕ Deselect all</button>
 </div>
 
-{% if not clips %}
-<p class="empty">No unsorted clips — plug in a GoPro to ingest, or check Events.</p>
-{% else %}
-<div class="grid" id="clip-grid">
-  {% for clip in clips %}
-  <div class="clip" id="clip-{{ clip.id }}" data-id="{{ clip.id }}" onclick="toggleSelect(this, event)">
-    <div class="thumb-wrap">
-      <div class="select-tick">✓</div>
-      {% if clip.thumb_url %}
-        <img src="{{ clip.thumb_url }}" alt="{{ clip.filename }}" loading="lazy">
-      {% else %}
-        <div class="no-thumb">▶</div>
-      {% endif %}
-    </div>
-    <div class="clip-info">
-      <div class="clip-name" title="{{ clip.filename }}">{{ clip.filename }}</div>
-      <div class="clip-meta">
-        <span>{{ clip.display_camera }}</span>
-        {% if clip.duration_secs %}
-          <span>{{ (clip.duration_secs | int) // 60 }}m {{ (clip.duration_secs | int) % 60 }}s</span>
-        {% endif %}
-        {% if clip.recorded_at %}<span>{{ clip.recorded_at[:10] }}</span>{% endif %}
-        {% if clip.size_bytes %}<span>{{ (clip.size_bytes / 1073741824) | round(1) }} GB</span>{% endif %}
-      </div>
-      <div class="clip-actions">
-        <button class="btn {% if clip.is_favourite %}active{% endif %}"
-          onclick="toggle(event, {{ clip.id }}, 'favourite', this)">★ Fave</button>
-        <button class="btn {% if clip.flagged %}active{% endif %}"
-          onclick="toggle(event, {{ clip.id }}, 'flag', this)">⚑ Flag</button>
-      </div>
-    </div>
-  </div>
-  {% endfor %}
+<p class="empty" id="empty" style="display:none">No unsorted clips — plug in a GoPro to ingest, or check Events.</p>
+<div class="grid" id="clip-grid"></div>
+
+<div id="player">
+  <button id="player-close" onclick="closePlayer()">✕</button>
+  <video id="player-video" controls playsinline></video>
 </div>
-{% endif %}
 
 <script>
 const selected = new Set();
+const grid  = document.getElementById('clip-grid');
+const params = new URLSearchParams(location.search);
+const query  = new URLSearchParams();
+if (params.get('favourite')) query.set('favourite', 'true');
+if (params.get('flagged'))   query.set('flagged', 'true');
 
-function toggleSelect(el, e) {
-  // Don't select when clicking the action buttons
-  if (e.target.closest('.btn')) return;
-  const id = el.dataset.id;
-  if (selected.has(id)) { selected.delete(id); el.classList.remove('selected'); }
-  else                   { selected.add(id);    el.classList.add('selected');    }
+function esc(s) { return (s || '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+function metaHtml(c) {
+  const bits = [`<span>${esc(c.display_camera)}</span>`];
+  if (c.duration_secs) { const s = Math.round(c.duration_secs); bits.push(`<span>${Math.floor(s/60)}m ${s%60}s</span>`); }
+  if (c.recorded_at)   bits.push(`<span>${esc(String(c.recorded_at).slice(0,10))}</span>`);
+  if (c.size_bytes)    bits.push(`<span>${(c.size_bytes/1073741824).toFixed(1)} GB</span>`);
+  return bits.join('');
+}
+
+function createCard(c) {
+  const d = document.createElement('div');
+  d.className = 'clip';
+  d.dataset.id = c.id;
+  d.innerHTML = `
+    <div class="thumb-wrap">
+      ${c.thumb_url ? `<img src="${c.thumb_url}" loading="lazy" alt="">` : `<div class="no-thumb">▶</div>`}
+      <button class="play-btn" title="Play">▶</button>
+      <div class="checkbox" title="Select"></div>
+    </div>
+    <div class="clip-info">
+      <div class="clip-name" title="${esc(c.filename)}">${esc(c.filename)}</div>
+      <div class="clip-meta">${metaHtml(c)}</div>
+      <div class="clip-actions">
+        <button class="btn fave">★ Fave</button>
+        <button class="btn flag">⚑ Flag</button>
+      </div>
+    </div>`;
+  return d;
+}
+
+function updateCard(node, c) {
+  node.classList.toggle('selected', selected.has(String(c.id)));
+  node.querySelector('.btn.fave').classList.toggle('active', !!c.is_favourite);
+  node.querySelector('.btn.flag').classList.toggle('active', !!c.flagged);
+}
+
+function reconcile(clips) {
+  const existing = new Map([...grid.children].map(n => [n.dataset.id, n]));
+  const seen = new Set();
+  clips.forEach((c, i) => {
+    const id = String(c.id);
+    seen.add(id);
+    let node = existing.get(id) || createCard(c);
+    updateCard(node, c);
+    if (grid.children[i] !== node) grid.insertBefore(node, grid.children[i] || null);
+  });
+  existing.forEach((node, id) => { if (!seen.has(id)) { node.remove(); selected.delete(id); } });
+  document.getElementById('empty').style.display = clips.length ? 'none' : 'block';
+  updateBar();
+}
+
+// --- selection ---
+function selectMode() { return selected.size > 0; }
+
+function toggleSelect(id) {
+  id = String(id);
+  const card = grid.querySelector(`.clip[data-id="${id}"]`);
+  if (selected.has(id)) { selected.delete(id); card && card.classList.remove('selected'); }
+  else                  { selected.add(id);    card && card.classList.add('selected');    }
+  updateBar();
+}
+
+function clearSelection() {
+  selected.clear();
+  grid.querySelectorAll('.clip.selected').forEach(el => el.classList.remove('selected'));
   updateBar();
 }
 
 function updateBar() {
+  document.body.classList.toggle('select-mode', selectMode());
   const bar = document.getElementById('assign-bar');
   document.getElementById('sel-count').textContent = `${selected.size} clip${selected.size === 1 ? '' : 's'} selected`;
   document.getElementById('clip-ids-input').value = [...selected].join(',');
   bar.classList.toggle('visible', selected.size > 0);
 }
 
-function clearSelection() {
-  selected.clear();
-  document.querySelectorAll('.clip.selected').forEach(el => el.classList.remove('selected'));
-  updateBar();
+// --- player ---
+function openPlayer(id) {
+  const v = document.getElementById('player-video');
+  v.src = `/clip/${id}/video`;
+  document.getElementById('player').classList.add('visible');
+  v.play().catch(() => {});
 }
+function closePlayer() {
+  const v = document.getElementById('player-video');
+  v.pause(); v.removeAttribute('src'); v.load();
+  document.getElementById('player').classList.remove('visible');
+}
+document.getElementById('player').addEventListener('click', e => {
+  if (e.target.id === 'player') closePlayer();   // backdrop click
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closePlayer(); });
 
-async function toggle(e, id, action, btn) {
-  e.stopPropagation();
-  const res = await fetch(`/clips/${id}/${action}`, { method: 'POST' });
-  if (res.ok) btn.classList.toggle('active');
+// --- one delegated click handler for the whole grid ---
+grid.addEventListener('click', async e => {
+  const card = e.target.closest('.clip');
+  if (!card) return;
+  const id = card.dataset.id;
+
+  // fave / flag always work, in either mode
+  const fav = e.target.closest('.btn.fave');
+  if (fav) { const r = await fetch(`/clips/${id}/favourite`, {method:'POST'}); if (r.ok) fav.classList.toggle('active'); return; }
+  const flg = e.target.closest('.btn.flag');
+  if (flg) { const r = await fetch(`/clips/${id}/flag`, {method:'POST'}); if (r.ok) flg.classList.toggle('active'); return; }
+
+  if (selectMode()) { toggleSelect(id); return; }          // selecting: click anywhere toggles
+  if (e.target.closest('.play-btn'))  { openPlayer(id); return; }
+  if (e.target.closest('.checkbox'))  { toggleSelect(id); return; }
+});
+
+// --- live refresh ---
+async function refresh() {
+  try {
+    const r = await fetch('/api/unsorted.json?' + query.toString());
+    if (r.ok) reconcile((await r.json()).clips);
+  } catch (e) {}
 }
+refresh();
+setInterval(refresh, 4000);
 </script>
 </body>
 </html>

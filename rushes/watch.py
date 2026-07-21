@@ -150,6 +150,12 @@ async def _main_loop() -> None:
     loopconn = db.connect()
     db.init_db(loopconn)
 
+    # A restart mid-import leaves jobs stuck. Honour an in-flight cancel; requeue
+    # a job that was merely interrupted (re-running is idempotent, so it resumes).
+    loopconn.execute("UPDATE import_jobs SET status='cancelled', message='cancelled' WHERE status='cancelling'")
+    loopconn.execute("UPDATE import_jobs SET status='pending', message='requeued after restart' WHERE status='running'")
+    loopconn.commit()
+
     workers: dict[str, asyncio.Task] = {}
     import_task: asyncio.Task | None = None
 
