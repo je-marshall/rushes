@@ -36,6 +36,17 @@ nav a.active { background: #333; color: #fff; }
 
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1px; background: #1a1a1a; margin: 1px; }
 
+/* Month section divider — spans the full grid width */
+.month-header {
+  grid-column: 1 / -1;
+  background: #0f0f0f;
+  padding: 1.4rem 1rem 0.5rem;
+  margin-top: 0.4rem;
+  border-bottom: 1px solid #2a2a2a;
+  color: #ccc; font-size: 0.85rem; font-weight: 600;
+  letter-spacing: 0.04em; text-transform: uppercase;
+}
+
 .clip { background: #0f0f0f; display: flex; flex-direction: column; outline: 2px solid transparent; transition: outline 0.05s; }
 .clip.selected { outline: 2px solid #2a6abf; }
 
@@ -43,7 +54,6 @@ nav a.active { background: #333; color: #fff; }
 .thumb-wrap img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .thumb-wrap .no-thumb { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: #333; font-size: 2rem; }
 
-/* Floating play button — normal mode, on hover */
 .play-btn {
   position: absolute; inset: 0; margin: auto;
   width: 3.2rem; height: 3.2rem; border-radius: 50%;
@@ -54,20 +64,17 @@ nav a.active { background: #333; color: #fff; }
 }
 .play-btn:hover { background: rgba(42,106,191,0.9); }
 .thumb-wrap:hover .play-btn { opacity: 1; }
-body.select-mode .play-btn { display: none; }   /* no play affordance while selecting */
+body.select-mode .play-btn { display: none; }
 
-/* Selection checkbox — top-right corner */
 .checkbox {
   position: absolute; top: 0.45rem; right: 0.45rem;
   width: 1.5rem; height: 1.5rem; border-radius: 5px;
   border: 2px solid rgba(255,255,255,0.8); background: rgba(0,0,0,0.35);
   cursor: pointer; display: flex; align-items: center; justify-content: center;
-  color: #fff; font-size: 0.9rem; line-height: 1;
-  opacity: 0; transition: opacity 0.12s;
+  color: #fff; font-size: 0.9rem; line-height: 1; opacity: 0; transition: opacity 0.12s;
 }
 .checkbox::after { content: "✓"; opacity: 0; }
-.thumb-wrap:hover .checkbox,
-body.select-mode .checkbox { opacity: 1; }
+.thumb-wrap:hover .checkbox, body.select-mode .checkbox { opacity: 1; }
 .clip.selected .checkbox { background: #2a6abf; border-color: #2a6abf; opacity: 1; }
 .clip.selected .checkbox::after { opacity: 1; }
 
@@ -80,11 +87,18 @@ body.select-mode .checkbox { opacity: 1; }
 .btn.active { background: #2a2a2a; border-color: #555; color: #fff; }
 
 /* Player overlay */
-#player { display: none; position: fixed; inset: 0; z-index: 40; background: rgba(0,0,0,0.85); align-items: center; justify-content: center; padding: 2rem; }
+#player { display: none; position: fixed; inset: 0; z-index: 40; background: rgba(0,0,0,0.9); align-items: center; justify-content: center; padding: 1.5rem; }
 #player.visible { display: flex; }
-#player video { max-width: 100%; max-height: 100%; border-radius: 6px; background: #000; outline: none; }
-#player-close { position: absolute; top: 1rem; right: 1.25rem; background: none; border: none; color: #ccc; font-size: 1.6rem; cursor: pointer; }
+#player-box { display: flex; flex-direction: column; max-width: 95vw; max-height: 92vh; }
+#player-bar { display: flex; align-items: center; gap: 1rem; padding: 0 0.2rem 0.6rem; color: #ddd; }
+#player-title { font-size: 0.9rem; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#player-bar a { color: #aad4ff; text-decoration: none; font-size: 0.82rem; }
+#player-bar a:hover { text-decoration: underline; }
+#player-close { background: none; border: none; color: #ccc; font-size: 1.4rem; cursor: pointer; line-height: 1; }
 #player-close:hover { color: #fff; }
+#player-video { width: min(90vw, 1600px); max-height: 80vh; background: #000; border-radius: 6px; display: block; }
+#player-error { display: none; background: #1a1a1a; border: 1px solid #3a1518; color: #f0a0a8; padding: 1.5rem; border-radius: 6px; max-width: 30rem; text-align: center; font-size: 0.9rem; line-height: 1.6; }
+#player-error a { color: #aad4ff; }
 </style>
 </head>
 <body>
@@ -124,8 +138,20 @@ body.select-mode .checkbox { opacity: 1; }
 <div class="grid" id="clip-grid"></div>
 
 <div id="player">
-  <button id="player-close" onclick="closePlayer()">✕</button>
-  <video id="player-video" controls playsinline></video>
+  <div id="player-box">
+    <div id="player-bar">
+      <span id="player-title"></span>
+      <span style="flex:1"></span>
+      <a id="player-download" href="#" download>Download</a>
+      <button id="player-close" onclick="closePlayer()">✕</button>
+    </div>
+    <video id="player-video" controls playsinline></video>
+    <div id="player-error">
+      This clip can’t be played in the browser — it’s most likely HEVC/H.265,
+      which browsers don’t decode.<br>
+      <a id="player-error-dl" href="#" download>Download the file</a> to view it locally.
+    </div>
+  </div>
 </div>
 
 <script>
@@ -141,15 +167,30 @@ function esc(s) { return (s || '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&l
 function metaHtml(c) {
   const bits = [`<span>${esc(c.display_camera)}</span>`];
   if (c.duration_secs) { const s = Math.round(c.duration_secs); bits.push(`<span>${Math.floor(s/60)}m ${s%60}s</span>`); }
-  if (c.recorded_at)   bits.push(`<span>${esc(String(c.recorded_at).slice(0,10))}</span>`);
   if (c.size_bytes)    bits.push(`<span>${(c.size_bytes/1073741824).toFixed(1)} GB</span>`);
   return bits.join('');
 }
 
+// --- month grouping ---
+function monthKey(c) { return c.recorded_at ? String(c.recorded_at).slice(0,7) : 'unknown'; }
+function monthLabel(key) {
+  if (key === 'unknown') return 'Undated';
+  const [y, m] = key.split('-').map(Number);
+  return new Date(y, m - 1, 1).toLocaleString('en-GB', { month: 'long', year: 'numeric' });
+}
+function buildSequence(clips) {
+  const items = []; let cur = null;
+  for (const c of clips) {
+    const k = monthKey(c);
+    if (k !== cur) { cur = k; items.push({ type: 'hdr', key: 'hdr:' + k, label: monthLabel(k) }); }
+    items.push({ type: 'clip', key: 'clip:' + c.id, data: c });
+  }
+  return items;
+}
+
 function createCard(c) {
   const d = document.createElement('div');
-  d.className = 'clip';
-  d.dataset.id = c.id;
+  d.className = 'clip'; d.dataset.id = c.id;
   d.innerHTML = `
     <div class="thumb-wrap">
       ${c.thumb_url ? `<img src="${c.thumb_url}" loading="lazy" alt="">` : `<div class="no-thumb">▶</div>`}
@@ -174,23 +215,27 @@ function updateCard(node, c) {
 }
 
 function reconcile(clips) {
-  const existing = new Map([...grid.children].map(n => [n.dataset.id, n]));
+  const items = buildSequence(clips);
+  const existing = new Map([...grid.children].map(n => [n.dataset.key, n]));
   const seen = new Set();
-  clips.forEach((c, i) => {
-    const id = String(c.id);
-    seen.add(id);
-    let node = existing.get(id) || createCard(c);
-    updateCard(node, c);
+  items.forEach((it, i) => {
+    seen.add(it.key);
+    let node = existing.get(it.key);
+    if (it.type === 'hdr') {
+      if (!node) { node = document.createElement('div'); node.className = 'month-header'; node.dataset.key = it.key; node.textContent = it.label; }
+    } else {
+      if (!node) { node = createCard(it.data); node.dataset.key = it.key; }
+      updateCard(node, it.data);
+    }
     if (grid.children[i] !== node) grid.insertBefore(node, grid.children[i] || null);
   });
-  existing.forEach((node, id) => { if (!seen.has(id)) { node.remove(); selected.delete(id); } });
+  existing.forEach((node, key) => { if (!seen.has(key)) { if (key.startsWith('clip:')) selected.delete(key.slice(5)); node.remove(); } });
   document.getElementById('empty').style.display = clips.length ? 'none' : 'block';
   updateBar();
 }
 
 // --- selection ---
 function selectMode() { return selected.size > 0; }
-
 function toggleSelect(id) {
   id = String(id);
   const card = grid.querySelector(`.clip[data-id="${id}"]`);
@@ -198,13 +243,11 @@ function toggleSelect(id) {
   else                  { selected.add(id);    card && card.classList.add('selected');    }
   updateBar();
 }
-
 function clearSelection() {
   selected.clear();
   grid.querySelectorAll('.clip.selected').forEach(el => el.classList.remove('selected'));
   updateBar();
 }
-
 function updateBar() {
   document.body.classList.toggle('select-mode', selectMode());
   const bar = document.getElementById('assign-bar');
@@ -214,37 +257,44 @@ function updateBar() {
 }
 
 // --- player ---
-function openPlayer(id) {
-  const v = document.getElementById('player-video');
-  v.src = `/clip/${id}/video`;
+const video = document.getElementById('player-video');
+function openPlayer(id, filename) {
+  const url = `/clip/${id}/video`;
+  document.getElementById('player-title').textContent = filename || '';
+  document.getElementById('player-download').href = url;
+  document.getElementById('player-error-dl').href = url;
+  document.getElementById('player-error').style.display = 'none';
+  video.style.display = 'block';
+  video.src = url;
   document.getElementById('player').classList.add('visible');
-  v.play().catch(() => {});
+  video.play().catch(() => {});
 }
 function closePlayer() {
-  const v = document.getElementById('player-video');
-  v.pause(); v.removeAttribute('src'); v.load();
+  video.pause(); video.removeAttribute('src'); video.load();
   document.getElementById('player').classList.remove('visible');
 }
-document.getElementById('player').addEventListener('click', e => {
-  if (e.target.id === 'player') closePlayer();   // backdrop click
+video.addEventListener('error', () => {
+  // Codec/network failure — offer the download instead of a blank player.
+  video.style.display = 'none';
+  document.getElementById('player-error').style.display = 'block';
 });
+document.getElementById('player').addEventListener('click', e => { if (e.target.id === 'player') closePlayer(); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closePlayer(); });
 
-// --- one delegated click handler for the whole grid ---
+// --- one delegated click handler for the grid ---
 grid.addEventListener('click', async e => {
   const card = e.target.closest('.clip');
   if (!card) return;
   const id = card.dataset.id;
 
-  // fave / flag always work, in either mode
   const fav = e.target.closest('.btn.fave');
   if (fav) { const r = await fetch(`/clips/${id}/favourite`, {method:'POST'}); if (r.ok) fav.classList.toggle('active'); return; }
   const flg = e.target.closest('.btn.flag');
   if (flg) { const r = await fetch(`/clips/${id}/flag`, {method:'POST'}); if (r.ok) flg.classList.toggle('active'); return; }
 
-  if (selectMode()) { toggleSelect(id); return; }          // selecting: click anywhere toggles
-  if (e.target.closest('.play-btn'))  { openPlayer(id); return; }
-  if (e.target.closest('.checkbox'))  { toggleSelect(id); return; }
+  if (selectMode()) { toggleSelect(id); return; }
+  if (e.target.closest('.play-btn')) { openPlayer(id, card.querySelector('.clip-name').textContent); return; }
+  if (e.target.closest('.checkbox')) { toggleSelect(id); return; }
 });
 
 // --- live refresh ---

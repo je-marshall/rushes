@@ -62,7 +62,20 @@ that camera is busy. More moving parts than the serial-keyed approach.
 - Confirm event assignment (which moves files into `events/<slug>/<camera>/`)
   triggers a refresh so the TV updates.
 
-### 2. Live-updating web UI (NEW)
+### DONE since the holiday list
+- 3b bulk import (web + CLI, recursive, .THM/.LRV/.JPG filtered, idempotent,
+  cancellable, queued sequentially); recorded_at with mtime/plausibility fallback.
+- bug #0: per-file folder resolution + canonical serials (last-8) so USB
+  (GP25478328) and file (C3531325478328) map to one camera.
+- #2 live-updating grid + hover-play + YouTube-style selection + video playback
+  (GET /clip/{id}/video, Range-enabled).
+
+### 2c. Playback proxy for HEVC (NEW, follow-up to playback)
+Browsers can't play GoPro HEVC/H.265 clips natively. Add a transcoded/streamed
+H.264 proxy for the player (on-the-fly ffmpeg, or pre-generated low-res proxy —
+the .LRV files we currently skip are exactly this and could be repurposed).
+
+### 2. Live-updating web UI (NEW) — DONE
 As clips ingest, the Unsorted grid should update without a manual refresh.
 - Ingest is a separate process writing to the DB, so the web app can't push
   directly — simplest is a lightweight JSON endpoint (e.g. `GET /api/clips?...`

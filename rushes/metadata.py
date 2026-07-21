@@ -77,6 +77,7 @@ def extract(path: Path) -> FileMeta:
         serial = _scan_for_serial(deep)
 
     model = _first(data, "Model", "CameraModelName", "DeviceName")
+    # Recording time only — NOT FileModifyDate, which is the copy/download time.
     date  = _first(data, "CreateDate", "MediaCreateDate", "DateTimeOriginal",
-                   "TrackCreateDate", "FileModifyDate")
+                   "TrackCreateDate")
     return FileMeta(serial=serial, model=model, exif_date=date)

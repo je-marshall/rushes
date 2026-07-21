@@ -61,7 +61,9 @@ async def import_file(conn, path: Path) -> str:
     await asyncio.to_thread(shutil.copy2, path, part)   # copy2 preserves mtime
     part.replace(dest)
 
-    recorded_at = recorded.pick(recorded.from_exif(meta.exif_date), recorded.from_mtime(path))
+    # Recording time only. If the file has no (plausible) recording date we leave
+    # it undated rather than guessing from mtime — see "fix timestamps" TODO.
+    recorded_at = recorded.pick(recorded.from_exif(meta.exif_date))
     await ingest.finalize_clip(conn, camera, dest, dest.stat().st_size, checksum, recorded_at)
     return "imported"
 
