@@ -35,10 +35,14 @@ th, td { text-align: left; padding: 0.5rem 0.6rem; border-bottom: 1px solid #222
 th { color: #888; font-weight: 500; }
 td.src { font-family: monospace; color: #bbb; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .status { font-size: 0.72rem; padding: 0.15rem 0.5rem; border-radius: 999px; }
-.status.pending { background: #2a2a2a; color: #aaa; }
-.status.running { background: #1e3a5f; color: #aad4ff; }
-.status.done    { background: #123020; color: #7fdca8; }
-.status.error   { background: #3a1518; color: #f0a0a8; }
+.status.pending    { background: #2a2a2a; color: #aaa; }
+.status.running    { background: #1e3a5f; color: #aad4ff; }
+.status.cancelling { background: #4a3a15; color: #f0d090; }
+.status.done       { background: #123020; color: #7fdca8; }
+.status.error      { background: #3a1518; color: #f0a0a8; }
+.status.cancelled  { background: #2a2a2a; color: #888; }
+.cancel-btn { background: transparent; border: 1px solid #6a2530; color: #f0a0a8; padding: 0.2rem 0.5rem; border-radius: 4px; cursor: pointer; font-size: 0.72rem; margin: 0; }
+.cancel-btn:hover { background: #3a1518; }
 .bar { height: 6px; background: #222; border-radius: 3px; overflow: hidden; margin-top: 0.3rem; }
 .bar > div { height: 100%; background: #2a6abf; width: 0; transition: width 0.3s; }
 .empty { color: #555; }
@@ -83,7 +87,7 @@ td.src { font-family: monospace; color: #bbb; max-width: 280px; overflow: hidden
   <h2>Jobs</h2>
   <div class="card">
     <table id="jobs">
-      <thead><tr><th>#</th><th>Source</th><th>Status</th><th>Progress</th><th>Result</th></tr></thead>
+      <thead><tr><th>#</th><th>Source</th><th>Status</th><th>Progress</th><th>Result</th><th></th></tr></thead>
       <tbody id="jobs-body">
         {% for j in jobs %}{% endfor %}
       </tbody>
@@ -98,14 +102,24 @@ function render(jobs) {
   document.getElementById('empty').style.display = jobs.length ? 'none' : 'block';
   body.innerHTML = jobs.map(j => {
     const pct = j.total ? Math.round(100 * j.processed / j.total) : 0;
+    const canCancel = (j.status === 'pending' || j.status === 'running');
+    const cancelCell = canCancel
+      ? `<button class="cancel-btn" onclick="cancelJob(${j.id})">Cancel</button>`
+      : '';
     return `<tr>
       <td>${j.id}</td>
       <td class="src" title="${j.source_path}">${j.source_path}</td>
       <td><span class="status ${j.status}">${j.status}</span></td>
       <td>${j.total ? `${j.processed}/${j.total}` : '—'}<div class="bar"><div style="width:${pct}%"></div></div></td>
       <td>${j.message || ''}</td>
+      <td>${cancelCell}</td>
     </tr>`;
   }).join('');
+}
+
+async function cancelJob(id) {
+  await fetch(`/import/${id}/cancel`, { method: 'POST' });
+  poll();
 }
 
 async function poll() {

@@ -66,11 +66,17 @@ async def import_file(conn, path: Path) -> str:
     return "imported"
 
 
-async def run_import(conn, source: Path, on_progress=None) -> tuple[int, int, int]:
+async def run_import(conn, source: Path, on_progress=None,
+                     is_cancelled=None) -> tuple[int, int, int, bool]:
     files    = list(_iter_videos(source))
     total    = len(files)
     imported = skipped = 0
+    cancelled = False
     for i, path in enumerate(files, 1):
+        # Stop cleanly at a file boundary — never mid-copy.
+        if is_cancelled and is_cancelled():
+            cancelled = True
+            break
         try:
             if await import_file(conn, path) == "imported":
                 imported += 1
@@ -81,7 +87,7 @@ async def run_import(conn, source: Path, on_progress=None) -> tuple[int, int, in
             print(f"  import ERROR {path}: {exc}", flush=True)
         if on_progress:
             on_progress(i, total, imported, skipped)
-    return total, imported, skipped
+    return total, imported, skipped, cancelled
 
 
 # --- background job plumbing (used by rushes-watch) -------------------------
@@ -105,6 +111,26 @@ def claim_pending(conn):
     return row
 
 
+def request_cancel(conn, job_id: int) -> None:
+    """Cancel a pending job immediately, or ask a running job to stop at the
+    next file boundary (the daemon's loop notices the 'cancelling' status)."""
+    row = conn.execute("SELECT status FROM import_jobs WHERE id = ?", (job_id,)).fetchone()
+    if not row:
+        return
+    now = datetime.now().isoformat()
+    if row["status"] == "pending":
+        conn.execute(
+            "UPDATE import_jobs SET status='cancelled', message='cancelled before start', updated_at=? WHERE id=?",
+            (now, job_id),
+        )
+    elif row["status"] == "running":
+        conn.execute(
+            "UPDATE import_jobs SET status='cancelling', updated_at=? WHERE id=?",
+            (now, job_id),
+        )
+    conn.commit()
+
+
 async def run_job(conn, job) -> None:
     job_id = job["id"]
     source = Path(job["source_path"]).expanduser()
@@ -125,11 +151,17 @@ async def run_job(conn, job) -> None:
         )
         conn.commit()
 
+    def is_cancelled():
+        r = conn.execute("SELECT status FROM import_jobs WHERE id=?", (job_id,)).fetchone()
+        return bool(r) and r["status"] == "cancelling"
+
     try:
-        total, imported, skipped = await run_import(conn, source, progress)
+        total, imported, skipped, cancelled = await run_import(conn, source, progress, is_cancelled)
+        status  = "cancelled" if cancelled else "done"
+        summary = f"{imported} imported, {skipped} skipped of {total}"
         conn.execute(
-            "UPDATE import_jobs SET status='done', message=?, updated_at=? WHERE id=?",
-            (f"{imported} imported, {skipped} skipped of {total}", now(), job_id),
+            "UPDATE import_jobs SET status=?, message=?, updated_at=? WHERE id=?",
+            (status, summary + (" (cancelled)" if cancelled else ""), now(), job_id),
         )
         conn.commit()
     except Exception as exc:
@@ -154,5 +186,5 @@ def main() -> None:
     def prog(i, total, imported, skipped):
         print(f"  [{i}/{total}] imported={imported} skipped={skipped}", flush=True)
 
-    total, imported, skipped = asyncio.run(run_import(conn, Path(args.source), prog))
+    total, imported, skipped, _ = asyncio.run(run_import(conn, Path(args.source), prog))
     print(f"Done: {imported} imported, {skipped} skipped of {total}", flush=True)

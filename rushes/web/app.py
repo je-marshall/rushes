@@ -193,6 +193,13 @@ async def import_start(source_path: str = Form(...)):
     return RedirectResponse("/import", status_code=303)
 
 
+@app.post("/import/{job_id}/cancel")
+async def import_cancel(job_id: int):
+    conn = db.connect()
+    importer.request_cancel(conn, job_id)
+    return RedirectResponse("/import", status_code=303)
+
+
 @app.get("/import/jobs.json")
 async def import_jobs_json():
     conn = db.connect()
