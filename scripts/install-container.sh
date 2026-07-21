@@ -74,7 +74,7 @@ fi
 # ---------------------------------------------------------------------------
 echo "==> Installing system packages"
 apt-get update -qq
-apt-get install -y python3 python3-venv ffmpeg isc-dhcp-client
+apt-get install -y python3 python3-venv ffmpeg isc-dhcp-client libimage-exiftool-perl
 
 # ---------------------------------------------------------------------------
 # Python venv + package

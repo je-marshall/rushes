@@ -15,6 +15,7 @@ dependencies = [
 rushes-web    = "rushes.web.app:main"
 rushes-ingest = "rushes.ingest:main"
 rushes-watch  = "rushes.watch:main"
+rushes-import = "rushes.importer:main"
 
 [build-system]
 requires = ["hatchling"]

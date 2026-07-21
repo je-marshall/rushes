@@ -8,7 +8,32 @@ from pathlib import Path
 
 import httpx
 
-from . import cameras, db, gopro, netsetup, settings, thumbs
+from . import cameras, db, gopro, netsetup, recorded, settings, thumbs
+
+
+async def finalize_clip(conn, camera_row, dest: Path, size: int,
+                        checksum: str, recorded_at: str | None) -> None:
+    """Thumbnail + probe + DB insert for a file already sitting at `dest`.
+    Shared by live download and bulk import. Insert is idempotent (checksum
+    and ingest_path are UNIQUE)."""
+    thumb_path = await thumbs.generate(dest)
+    duration   = _probe_duration(dest)
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO clips
+            (filename, ingest_path, recorded_at, ingested_at, camera_id,
+             camera_serial, camera_model, duration_secs, size_bytes, checksum,
+             thumbnail_path)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            dest.name, str(dest), recorded_at, datetime.now().isoformat(),
+            camera_row["id"], camera_row["serial"], camera_row["model"],
+            duration, size, checksum,
+            str(thumb_path) if thumb_path else None,
+        ),
+    )
+    conn.commit()
 
 
 async def _pull_file(
@@ -35,25 +60,8 @@ async def _pull_file(
                 sha.update(chunk)
     os.replace(part, dest)
 
-    checksum   = sha.hexdigest()
-    thumb_path = await thumbs.generate(dest)
-    duration   = _probe_duration(dest)
-
-    conn.execute(
-        """
-        INSERT OR IGNORE INTO clips
-            (filename, ingest_path, ingested_at, camera_id, camera_serial,
-             camera_model, duration_secs, size_bytes, checksum, thumbnail_path)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            mf.filename, str(dest), datetime.now().isoformat(),
-            camera_row["id"], camera_row["serial"], camera_row["model"],
-            duration, mf.size, checksum,
-            str(thumb_path) if thumb_path else None,
-        ),
-    )
-    conn.commit()
+    recorded_at = recorded.pick(recorded.from_unix(mf.created))
+    await finalize_clip(conn, camera_row, dest, mf.size, sha.hexdigest(), recorded_at)
     print(f"  done  {mf.filename}", flush=True)
 
 
@@ -87,18 +95,17 @@ async def pull_all(conn, client: httpx.AsyncClient, serial: str, model: str) -> 
     Returns (files_on_camera, files_pulled_this_call). Reusable by the CLI and
     the watch daemon; safe to call repeatedly (existing files are skipped).
     """
-    camera_row = cameras.upsert(conn, serial, model)
-    cam_slug   = cameras.camera_slug(camera_row)
-    dest_dir   = settings.unsorted_dir(conn) / cam_slug
-
+    camera_row  = cameras.upsert(conn, serial, model)
+    camera_id   = camera_row["id"]
     media_files = await gopro.get_media_list(client)
 
-    tasks = []
-    for mf in media_files:
-        dest = dest_dir / mf.filename
-        if dest.exists():
-            continue
-        tasks.append((mf, dest))
+    def _dest_for(mf) -> Path:
+        # Resolve the folder per file from the current DB state, so a camera
+        # rename mid-pull sends subsequent files to the new folder.
+        cam = cameras.get(conn, camera_id) or camera_row
+        return settings.unsorted_dir(conn) / cameras.camera_slug(cam) / mf.filename
+
+    tasks = [(mf, _dest_for(mf)) for mf in media_files if not _dest_for(mf).exists()]
 
     sem    = asyncio.Semaphore(2)
     pulled = 0

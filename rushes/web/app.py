@@ -11,7 +11,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
-from .. import cameras, config, db, events as ev, settings
+from .. import cameras, config, db, events as ev, importer, settings
 
 _UNPROTECTED = {"/login"}
 
@@ -167,6 +167,37 @@ async def rename_camera(camera_id: int, name: str = Form(...)):
     conn = db.connect()
     cameras.rename(conn, camera_id, name)
     return RedirectResponse("/cameras", status_code=303)
+
+
+# ---------------------------------------------------------------------------
+# Import
+# ---------------------------------------------------------------------------
+
+@app.get("/import", response_class=HTMLResponse)
+async def import_page(request: Request):
+    conn = db.connect()
+    jobs = conn.execute(
+        "SELECT * FROM import_jobs ORDER BY id DESC LIMIT 20"
+    ).fetchall()
+    return _templates.TemplateResponse(request, "import.html", {
+        "jobs": [dict(j) for j in jobs],
+    })
+
+
+@app.post("/import/start")
+async def import_start(source_path: str = Form(...)):
+    path = source_path.strip()
+    conn = db.connect()
+    if path:
+        importer.enqueue(conn, path)
+    return RedirectResponse("/import", status_code=303)
+
+
+@app.get("/import/jobs.json")
+async def import_jobs_json():
+    conn = db.connect()
+    jobs = conn.execute("SELECT * FROM import_jobs ORDER BY id DESC LIMIT 20").fetchall()
+    return {"jobs": [dict(j) for j in jobs]}
 
 
 # ---------------------------------------------------------------------------

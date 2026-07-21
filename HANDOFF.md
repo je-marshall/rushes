@@ -1,102 +1,106 @@
-# Rushes — WIP handoff (2026-07-20 evening)
+# Rushes — handoff / TODO (updated 2026-07-21)
 
-Untracked scratch notes. Not committed. Delete when Track 2 lands.
+Untracked notes. The core system is DONE and working end to end. What's below is
+polish + features, none of it urgent.
 
-## TL;DR
-The ingest pipeline is PROVEN to work end-to-end when the camera is awake
-(connects to 172.26.194.51, lists media, pulls real files). The remaining
-problem is entirely about **camera readiness/timing + no retry** — the camera
-sleeps and the one-shot udev-triggered ingest fires at the wrong moment. That's
-what Track 2 (a self-healing watcher daemon) is for.
+## Status: WORKING ✅
+Full plug-and-forget loop confirmed on 2026-07-21:
+plug in → host udev (`gopro-connect.sh`) moves the interface into container 302
+→ `rushes-watch` daemon detects it, bounded-DHCP brings it up, waits for the
+camera to be ready, sets Auto Power Down=Never + keep-alive, and pulls footage
+to `/data/footage/unsorted/<camera>/` on ZFS. Retries through camera boot/sleep;
+survives udev flakiness. Logs: `journalctl -fu rushes-watch`.
 
-## What works now (committed + deployed)
-- USB → container interface move: host udev rule → `gopro-connect.sh`. The
-  by-vendor-ID fallback works (tonight: "found GoPro interface: enx2474f78b43ad
-  (was eth0)"). Interface reliably lands in container 302.
-- Ingest launched as a transient unit via `systemd-run` (detaches from udev,
-  logs to journal).
-- Ingest pipeline (validated by hand earlier tonight — files were pulling):
-  - Camera IP discovered as `.51` of the DHCP-assigned /24 (NOT 10.5.5.9 — that's
-    the WiFi AP address; USB uses a per-serial 172.2x.1xx.0/24).
-  - `wired_usb?p=1` enable (best-effort; Hero 10 returns 500 if already on).
-  - Identify via `/gopro/camera/state` (status 30 = serial; info returns {} on H10).
-  - keep-alive loop (3s) + auto-power-off=Never (setting 59 = 0) during ingest.
-  - Resume-safe: downloads to `.part`, atomic rename on success.
-- Storage: `/data` ZFS mount into the (UNPRIVILEGED) container. UID map 0→100000,
-  posixacl enabled, `setfacl u:100000:rwX` (access + default). `RUSHES_DATA=/data`
-  baked into both the `rushes-ingest` wrapper and the systemd service; DB at
-  `/data/rushes.db`.
-- Editable footage dir via web Settings page (stored in DB `settings` table;
-  ingest reads it from the shared DB). Clips store absolute paths so the root
-  can move without migration.
+## Key facts (for whoever picks this up)
+- Host = `esn`; container 302 = `dhrushes`, UNPRIVILEGED (uid_map 0→100000).
+- Storage: ZFS at `/data` (mp0), posixacl + `setfacl u:100000:rwX`. `RUSHES_DATA=/data`
+  → DB at `/data/rushes.db`, footage under `/data/footage/{unsorted,events}`.
+  Footage dir is editable at web Settings; clips store absolute paths.
+- Camera: HERO10, serial GP25995694, USB vendor 2672. USB API at the DHCP-derived
+  `.51` (e.g. 172.26.194.51), NOT 10.5.5.9 (that's WiFi).
+- Services (container): `rushes-web` (UI :8765), `rushes-watch` (ingest daemon).
+  Both `systemctl`, PYTHONUNBUFFERED=1. Update after pull:
+  `/opt/rushes-venv/bin/pip install -e /root/rushes && systemctl restart rushes-web rushes-watch`
+- Open GoPro endpoints verified (H10/H13): `wired_usb?p=1`, `keep_alive`,
+  `setting?setting=59&option=0` (APO=Never), `camera/state` (status 30=serial,
+  8=busy, 10=encoding), `media/list`, download `GET /videos/DCIM/<dir>/<file>`.
+  `camera/info` returns `{}` on H10 — use `state`.
+- Host tools: `scripts/gopro-diag.sh` (state), `scripts/gopro-reset.sh` (software
+  re-plug via USB unbind/bind — wakes a camera without a physical trip).
 
-## Environment / facts
-- Host = `esn`. Container 302 = `dhrushes`, UNPRIVILEGED (uid_map `0 100000 65536`).
-- Camera: HERO10 Black, serial `GP25995694`, USB vendor `2672`, sysfs
-  `/sys/bus/usb/devices/5-2` on host. USB API at `172.26.194.51:8080`, host `.52`.
-- Repo: container `/root/rushes`; host path used for install scripts:
-  `/evs/subvol-302-disk-0/root/rushes` (verify — may differ now it's unprivileged).
-- Web UI: http://10.1.0.160:8765
-- Verified Open GoPro endpoints (Hero 10 & 13):
-  - `GET /gopro/camera/control/wired_usb?p=1`
-  - `GET /gopro/camera/keep_alive` (every 3s)
-  - `GET /gopro/camera/setting?setting=59&option=0` (Auto Power Down = Never)
-  - `GET /gopro/camera/state` → status 8=busy, 10=encoding, 30=serial
-  - `GET /gopro/media/list`; download `GET /videos/DCIM/<dir>/<file>`
-  - `/gopro/camera/info` returns `{}` on Hero 10 — do not rely on it.
+## TODO — pick up after holiday
 
-## Bugs found tonight (fix in Track 2 or before)
-1. **Readiness race (root cause).** Auto-ingest fires ~1s after the interface
-   moves, but after a plug-in / `gopro-reset` the camera takes seconds to boot
-   its network. DHCP/API not ready → ingest fails, no folders created. Manual
-   ingest works only because the camera had been awake a while.
-2. **dhclient hangs when camera asleep.** No DHCP server answering → `dhclient -1`
-   blocks. Need a hard timeout (e.g. `timeout 20 dhclient ...`) + fail fast + retry.
-3. **Output buffering.** `netsetup`/ingest `print()`s are buffered when stdout is
-   not a TTY (i.e. under systemd), so `journalctl` shows nothing until exit. Fix:
-   `PYTHONUNBUFFERED=1` in the wrapper, or `flush=True` everywhere, or real logging.
-4. **systemd-run unit-name collision.** Last error: "could not start
-   rushes-ingest-enx2474f78b43ad (already ingesting this camera?)". A previous
-   unit with that name still exists (the earlier hung/failed manual run is very
-   likely STILL RUNNING and holding the interface — that also explains why the
-   new DHCP hangs). `--collect` doesn't free a still-active/failed unit.
+### 0. BUG: renaming a camera mid-ingest corrupts paths
+Reported 2026-07-21. Renaming a camera in the UI while its footage is still
+importing broke things (folder moved under the active download). Worked around
+by restarting `rushes-watch` + replugging.
 
-## FIRST THING TOMORROW — clean up the stuck state
-```bash
-# in container 302
-systemctl stop rushes-ingest-enx2474f78b43ad 2>/dev/null
-systemctl reset-failed rushes-ingest-enx2474f78b43ad 2>/dev/null
-ps aux | grep -E 'rushes-ingest|dhclient' | grep -v grep   # kill leftovers
-pkill -f rushes-ingest; pkill dhclient
-ip -br addr show enx2474f78b43ad                            # expect no 172.26.x until re-ingest
-```
-The hung manual `rushes-ingest` from tonight is probably still alive holding the
-interface — that single fact explains bugs #2 and #4 at once.
+Cause: `cameras.rename()` does `shutil.move(unsorted/<old_slug> → <new_slug>)`
+and rewrites `ingest_path`, but the daemon's `pull_all` has already computed
+`dest_dir = unsorted/<old_slug>` and is streaming into it — so files are written
+to a path that just got moved away, and the DB path rewrite races the insert.
 
-## NEXT: Track 2 — self-healing watcher daemon (`rushes-watch`)
-Design agreed:
-- Long-running systemd service in the container.
-- Watches the container netns for GoPro interfaces appearing (poll
-  `/sys/class/net` every ~2s, or `ip monitor link`). Ignore `lo` / `eth0` veth.
-- Per interface, a retry-with-backoff worker:
-  1. `bring_up` with BOUNDED dhclient (timeout, no hang), retry until it gets a
-     172.26.x lease (camera waking).
-  2. enable wired_usb (best-effort), poll `/gopro/camera/state` until ready
-     (status 8==0 && 10==0).
-  3. set auto-power-off=Never, start keep-alive → camera never sleeps again after
-     the first good connection (solves the race at the source).
-  4. ingest; optionally keep polling media list for NEW clips while connected.
-  5. on interface disappear, stop the worker cleanly.
-- Handle multiple cameras concurrently (one worker each).
-- **Change udev path:** `gopro-connect.sh` should ONLY move the interface into
-  the container; DROP the `systemd-run rushes-ingest` call. The daemon owns
-  ingest → no more unit-name collisions, and retries mean udev timing no longer
-  matters.
-- Fold in fixes #2 (bounded DHCP), #3 (unbuffered logging to journal), #4 (daemon
-  owns single-flight per interface).
+Recommended fix (clean): **key the unsorted folder by the immutable serial, not
+the mutable slug.** Change `cameras.camera_slug()` usage so `unsorted/` always
+uses `serial` (never moves), and drop the folder-move + path-rewrite from
+`cameras.rename()` — rename then only updates the display name/slug. Event
+folders (`events/<event-slug>/<camera>`) can keep the friendly name since event
+assignment isn't concurrent with ingest. This removes the race entirely.
 
-## Also outstanding (later)
-- Jellyfin libraries pointing at `/data/footage/unsorted` and `/data/footage/events`.
-- Confirm host repo path for install scripts now the container is unprivileged.
-- Decide whether to keep camera awake 24/7 (keep-alive) or let it sleep and rely
-  on re-enumeration + daemon retry. Tradeoff: battery/wear vs. instant capture.
+Alternative (guard): have the daemon mark a camera "ingesting" (a column on
+`cameras` or a small table) and have the rename endpoint refuse/defer while
+that camera is busy. More moving parts than the serial-keyed approach.
+
+
+### 1. Jellyfin libraries (last piece of the original vision)
+- Add two "Home Videos" libraries pointing at `/data/footage/unsorted` and
+  `/data/footage/events` (Jellyfin must have `/data` mounted too, or share the
+  dataset).
+- Wire auto-rescan: `rushes/jellyfin.py` already has the rescan hook; set
+  `JELLYFIN_URL` + `JELLYFIN_TOKEN` (Jellyfin → Administration → API Keys → +),
+  e.g. re-run `install-container.sh --jellyfin-url http://<host>:8096 --jellyfin-token <key>`.
+- Confirm event assignment (which moves files into `events/<slug>/<camera>/`)
+  triggers a refresh so the TV updates.
+
+### 2. Live-updating web UI (NEW)
+As clips ingest, the Unsorted grid should update without a manual refresh.
+- Ingest is a separate process writing to the DB, so the web app can't push
+  directly — simplest is a lightweight JSON endpoint (e.g. `GET /api/clips?...`
+  returning the current unsorted clips) that the page polls every ~5s and diffs
+  into the grid. Or an SSE endpoint (`/events/stream`) where the web app polls
+  the DB and pushes new-clip events; nicer UX, a bit more plumbing.
+- Recommend starting with polling — trivial and robust. New clips appear as
+  cards fade in; count in the header updates.
+
+### 3. Per-camera toggle on the Unsorted page (NEW)
+- Add a camera filter to the `/` route: `camera_id: int | None`. The `clips`
+  table already has `camera_id`, and the index query already LEFT JOINs cameras.
+- UI: a row of pill toggles at the top of Unsorted — "All" + one per camera
+  (reuse the nav pill style). Selecting one filters the grid; combine with the
+  existing favourite/flagged filters.
+- Cameras list for the toggles: `SELECT id, COALESCE(name, serial) FROM cameras`.
+
+### 3b. Bulk-import existing GoPro files (NEW)
+Import a directory of old .MP4s as clips, attributed to the right camera.
+- GoPro files embed the camera serial: GPMF `CASN`, surfaced by exiftool as
+  `CameraSerialNumber` (verify tag on a real file — varies by firmware). Should
+  match the API serial (status 30, e.g. GP25995694), so imports land under the
+  same camera as live ingest.
+- Also extract `CreateDate` → populate `clips.recorded_at` (live ingest could do
+  the same from the media-list `cre` field — currently left NULL; nice-to-have).
+- New CLI `rushes-import <dir>`: for each MP4 → read serial+date (exiftool) →
+  `cameras.upsert(serial, model)` → checksum → copy into `unsorted/<serial>/`
+  (see bug #0: key unsorted by serial) → thumbnail → INSERT. The `checksum`
+  UNIQUE constraint makes re-runs idempotent (dupes skipped).
+- Add `exiftool` to the apt deps in `install-container.sh` if used (else parse
+  GPMF via a lib). Copy, don't move, the originals.
+
+### 4. Cold plug-and-forget test
+The 2026-07-21 success used the interface already in the container. Do one real
+unplug → wait → replug to confirm the whole chain fires from a fresh USB
+enumeration (not just `gopro-reset`).
+
+### 5. Tidy
+- Delete this file once 1–4 are done.
+- Confirm ingested clips appear in the web UI at http://10.1.0.160:8765 (proves
+  DB/web/ingest all agree on `/data`).

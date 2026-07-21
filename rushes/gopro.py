@@ -44,6 +44,7 @@ class MediaFile:
     filename:  str
     directory: str
     size:      int
+    created:   int | None = None   # 'cre' from the media list — Unix seconds (camera clock)
 
     @property
     def download_path(self) -> str:
@@ -116,5 +117,9 @@ async def get_media_list(client: httpx.AsyncClient) -> list[MediaFile]:
             name = f["n"]
             if not name.upper().endswith(".MP4"):
                 continue  # skip .LRV proxy clips and .THM thumbnails
-            files.append(MediaFile(filename=name, directory=d, size=int(f.get("s", 0))))
+            created = f.get("cre")
+            files.append(MediaFile(
+                filename=name, directory=d, size=int(f.get("s", 0)),
+                created=int(created) if created else None,
+            ))
     return files

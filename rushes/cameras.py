@@ -17,6 +17,10 @@ def camera_slug(camera: sqlite3.Row) -> str:
     return camera["slug"] or camera["serial"]
 
 
+def get(conn: sqlite3.Connection, camera_id: int) -> sqlite3.Row | None:
+    return conn.execute("SELECT * FROM cameras WHERE id = ?", (camera_id,)).fetchone()
+
+
 def upsert(conn: sqlite3.Connection, serial: str, model: str) -> sqlite3.Row:
     conn.execute(
         """

@@ -55,5 +55,18 @@ def init_db(conn: sqlite3.Connection) -> None:
             key   TEXT PRIMARY KEY,
             value TEXT
         );
+
+        CREATE TABLE IF NOT EXISTS import_jobs (
+            id          INTEGER PRIMARY KEY,
+            source_path TEXT    NOT NULL,
+            status      TEXT    NOT NULL DEFAULT 'pending',  -- pending|running|done|error
+            total       INTEGER NOT NULL DEFAULT 0,
+            processed   INTEGER NOT NULL DEFAULT 0,
+            imported    INTEGER NOT NULL DEFAULT 0,
+            skipped     INTEGER NOT NULL DEFAULT 0,
+            message     TEXT,
+            created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+            updated_at  TEXT
+        );
     """)
     conn.commit()

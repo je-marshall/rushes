@@ -24,7 +24,7 @@ from pathlib import Path
 
 import httpx
 
-from . import db, gopro, ingest, netsetup
+from . import db, gopro, importer, ingest, netsetup
 
 log = logging.getLogger("rushes.watch")
 
@@ -135,10 +135,26 @@ async def _handle(iface: str) -> None:
         log.info("%s: worker finished", iface)
 
 
+async def _run_import_job(job) -> None:
+    # Fresh connection for the job so it never shares transaction state with the
+    # loop's claim connection.
+    conn = db.connect()
+    db.init_db(conn)
+    log.info("import job %d starting: %s", job["id"], job["source_path"])
+    await importer.run_job(conn, job)
+    log.info("import job %d finished", job["id"])
+
+
 async def _main_loop() -> None:
-    log.info("rushes-watch started — watching for GoPro interfaces")
+    log.info("rushes-watch started — watching for GoPro interfaces + import jobs")
+    loopconn = db.connect()
+    db.init_db(loopconn)
+
     workers: dict[str, asyncio.Task] = {}
+    import_task: asyncio.Task | None = None
+
     while True:
+        # 1. GoPro interfaces
         for iface in _gopro_interfaces():
             if iface not in workers:
                 workers[iface] = asyncio.create_task(_handle(iface))
@@ -147,6 +163,17 @@ async def _main_loop() -> None:
                 if not task.cancelled() and task.exception():
                     log.error("%s worker crashed: %r", iface, task.exception())
                 del workers[iface]
+
+        # 2. Import jobs — one at a time
+        if import_task and import_task.done():
+            if not import_task.cancelled() and import_task.exception():
+                log.error("import job crashed: %r", import_task.exception())
+            import_task = None
+        if import_task is None:
+            job = importer.claim_pending(loopconn)
+            if job:
+                import_task = asyncio.create_task(_run_import_job(job))
+
         await asyncio.sleep(POLL_SECS)
 
 
