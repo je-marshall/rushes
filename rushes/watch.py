@@ -39,14 +39,16 @@ BACKOFF_MAX      = 60
 
 
 def _gopro_interfaces() -> set[str]:
+    # Real interfaces are symlinks to device dirs and have an `address` file.
+    # This filters out control files like `bonding_masters`.
     return {
         p.name for p in Path("/sys/class/net").iterdir()
-        if p.name not in IGNORE_INTERFACES
+        if p.name not in IGNORE_INTERFACES and (p / "address").exists()
     }
 
 
 def _present(iface: str) -> bool:
-    return Path(f"/sys/class/net/{iface}").exists()
+    return (Path(f"/sys/class/net/{iface}") / "address").exists()
 
 
 async def _wait_ready(client: httpx.AsyncClient, timeout: int) -> dict | None:
@@ -153,4 +155,5 @@ def main() -> None:
         stream=sys.stdout, level=logging.INFO,
         format="%(asctime)s %(levelname)s %(message)s",
     )
+    logging.getLogger("httpx").setLevel(logging.WARNING)  # silence per-request spam
     asyncio.run(_main_loop())

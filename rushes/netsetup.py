@@ -85,7 +85,13 @@ def bring_up(interface: str) -> tuple[str, str, int]:
             capture_output=True, timeout=_DHCP_TIMEOUT,
         )
     except subprocess.TimeoutExpired:
-        _run(["pkill", "-f", f"dhclient.*{interface}"], check=False)
+        pass
+
+    # dhclient daemonizes and keeps renewing after it gets a lease. Kill it and
+    # keep the leased address statically for the session (we don't `-r`, so the
+    # address stays configured) — otherwise a stray/renewing dhclient can flap
+    # the link mid-transfer and drop every download.
+    _run(["pkill", "-f", f"dhclient.*{interface}"], check=False)
 
     # Belt-and-suspenders: if dhclient still installed a default route via the
     # camera, remove it — the GoPro must never become the container's gateway.
