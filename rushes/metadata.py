@@ -45,28 +45,38 @@ def _scan_for_serial(d: dict) -> str | None:
     return None
 
 
+_BASE = ["exiftool", "-json", "-api", "largefilesupport=1"]
+# The fields we care about — asking for just these keeps exiftool quick.
+_FAST_TAGS = ["-Model", "-CameraSerialNumber", "-SerialNumber", "-DeviceName",
+              "-CreateDate", "-MediaCreateDate", "-DateTimeOriginal",
+              "-TrackCreateDate", "-FileModifyDate"]
+
+
+def _run(args: list[str]) -> dict:
+    try:
+        out = subprocess.run(_BASE + args, capture_output=True, text=True, timeout=120)
+        return json.loads(out.stdout)[0]
+    except (subprocess.TimeoutExpired, json.JSONDecodeError, IndexError):
+        return {}
+
+
 def extract(path: Path) -> FileMeta:
     """Read metadata via exiftool. Raises ExiftoolMissing if exiftool isn't
-    installed; returns all-None fields if a file simply has no such metadata."""
+    installed; returns all-None fields if a file has no such metadata.
+
+    Fast path first (header metadata only). Only if the serial isn't there do we
+    fall back to `-ee`, which parses the embedded GPMF stream (the full-file read
+    that makes exiftool slow) to recover the serial."""
     if not available():
         raise ExiftoolMissing("exiftool not found (apt install libimage-exiftool-perl)")
 
-    # -ee extracts embedded metadata (the GPMF stream, where the serial lives).
-    try:
-        out = subprocess.run(
-            ["exiftool", "-json", "-ee", "-api", "largefilesupport=1", str(path)],
-            capture_output=True, text=True, timeout=120,
-        )
-    except subprocess.TimeoutExpired:
-        return FileMeta(None, None, None)
-
-    try:
-        data = json.loads(out.stdout)[0]
-    except (json.JSONDecodeError, IndexError):
-        return FileMeta(None, None, None)
-
+    data   = _run(_FAST_TAGS + [str(path)])
     serial = _scan_for_serial(data)
-    model  = _first(data, "Model", "CameraModelName", "DeviceName")
-    date   = _first(data, "CreateDate", "MediaCreateDate", "DateTimeOriginal",
-                    "TrackCreateDate", "FileModifyDate")
+    if not serial:
+        deep   = _run(["-ee", "-CameraSerialNumber", "-SerialNumber", str(path)])
+        serial = _scan_for_serial(deep)
+
+    model = _first(data, "Model", "CameraModelName", "DeviceName")
+    date  = _first(data, "CreateDate", "MediaCreateDate", "DateTimeOriginal",
+                   "TrackCreateDate", "FileModifyDate")
     return FileMeta(serial=serial, model=model, exif_date=date)

@@ -3,6 +3,7 @@ Camera registry: upsert on ingest, rename via web UI.
 Renaming a camera renames its unsorted folder and updates all clip paths in the DB.
 """
 
+import re
 import shutil
 import sqlite3
 from datetime import datetime
@@ -10,6 +11,21 @@ from pathlib import Path
 
 from . import settings
 from .slug import slugify
+
+
+def canonical_serial(raw: str | None) -> str:
+    """
+    Normalise a serial so the same physical camera has one identity regardless
+    of source. The USB API reports a short form (e.g. GP25478328 = 'GP' + last 8)
+    while the embedded file metadata has the full manufacturing serial
+    (e.g. C3531325478328). The shared, stable part is the last 8 alphanumerics.
+    """
+    if not raw:
+        return "unknown"
+    s = re.sub(r"[^A-Za-z0-9]", "", raw).upper()
+    if not s or s == "UNKNOWN":
+        return "unknown"
+    return s[-8:] if len(s) >= 8 else s
 
 
 def camera_slug(camera: sqlite3.Row) -> str:
@@ -22,6 +38,7 @@ def get(conn: sqlite3.Connection, camera_id: int) -> sqlite3.Row | None:
 
 
 def upsert(conn: sqlite3.Connection, serial: str, model: str) -> sqlite3.Row:
+    serial = canonical_serial(serial)   # single choke point: one identity per camera
     conn.execute(
         """
         INSERT INTO cameras (serial, model, last_seen)
