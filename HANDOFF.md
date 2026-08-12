@@ -73,11 +73,11 @@ that camera is busy. More moving parts than the serial-keyed approach.
 ### 2c. Playback proxy for HEVC — DONE
 Solved by pulling GoPro's .LRV (H.264 low-res proxy) and streaming it in the
 player; .THM used as the thumbnail. Only affects clips ingested/imported AFTER
-this change — existing clips have no proxy_path (re-import won't add one, since
-checksum-dedup skips them). To backfill proxies for already-imported footage,
-either wipe+reimport, or write a one-off pass that pulls .LRV/.THM for existing
-clips. Also: not every GoPro mode produces an .LRV — those clips fall back to the
-(possibly HEVC, non-playable) original + Download.
+this change — already-imported clips get a proxy/thumbnail backfilled by simply re-running
+the import over the ORIGINAL source dirs (the card dumps that still have the
+.LRV/.THM next to the MP4s) — the MP4 is skipped, the sidecars are pulled in
+(reported as "updated"). Note: not every GoPro mode produces an .LRV — those
+clips fall back to the (possibly HEVC, non-playable) original + Download.
 
 ### 2. Live-updating web UI (NEW) — DONE
 As clips ingest, the Unsorted grid should update without a manual refresh.

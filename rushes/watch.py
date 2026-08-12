@@ -120,9 +120,9 @@ async def _handle(iface: str) -> None:
                 first = True
                 while _present(iface):
                     try:
-                        found, pulled = await ingest.pull_all(conn, client, serial, model)
-                        if pulled or first:
-                            log.info("%s: %d new clip(s), %d on camera", serial, pulled, found)
+                        found, pulled, updated = await ingest.pull_all(conn, client, serial, model)
+                        if pulled or updated or first:
+                            log.info("%s: %d new, %d updated, %d on camera", serial, pulled, updated, found)
                         first = False
                     except httpx.HTTPError as exc:
                         log.warning("%s: media sync failed (%s) — ending cycle", serial, exc)

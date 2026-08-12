@@ -45,6 +45,35 @@ async def _download_to(client: httpx.AsyncClient, url: str, path: Path) -> None:
                 fh.write(chunk)
 
 
+async def _backfill_live(conn, client: httpx.AsyncClient, mf: gopro.MediaFile, clip) -> bool:
+    """For a clip already in the DB, pull only its .LRV proxy / .THM thumbnail
+    off the camera if we're missing them — never re-download the MP4."""
+    checksum = clip["checksum"]
+    changed  = False
+
+    have_proxy = clip["proxy_path"] and Path(clip["proxy_path"]).exists()
+    if not have_proxy and mf.lrv_path:
+        p = config.PROXY_DIR / f"{checksum}.mp4"
+        try:
+            await _download_to(client, mf.lrv_path, p)
+            conn.execute("UPDATE clips SET proxy_path = ? WHERE id = ?", (str(p), clip["id"]))
+            conn.commit(); changed = True
+        except Exception:
+            pass
+
+    have_thumb = clip["thumbnail_path"] and Path(clip["thumbnail_path"]).exists()
+    if not have_thumb and mf.thm_path:
+        p = config.THUMB_DIR / f"{checksum}.jpg"
+        try:
+            await _download_to(client, mf.thm_path, p)
+            conn.execute("UPDATE clips SET thumbnail_path = ? WHERE id = ?", (str(p), clip["id"]))
+            conn.commit(); changed = True
+        except Exception:
+            pass
+
+    return changed
+
+
 async def _pull_file(
     client:   httpx.AsyncClient,
     mf:       gopro.MediaFile,
@@ -121,11 +150,12 @@ async def connect(client: httpx.AsyncClient) -> dict:
     return await gopro.get_state(client)
 
 
-async def pull_all(conn, client: httpx.AsyncClient, serial: str, model: str) -> tuple[int, int]:
+async def pull_all(conn, client: httpx.AsyncClient, serial: str, model: str) -> tuple[int, int, int]:
     """
-    Pull every not-yet-downloaded MP4 for this camera into its unsorted folder.
-    Returns (files_on_camera, files_pulled_this_call). Reusable by the CLI and
-    the watch daemon; safe to call repeatedly (existing files are skipped).
+    Sync this camera: pull new MP4s, and backfill the .LRV proxy / .THM thumbnail
+    for clips we already have but are missing them (small downloads only, no
+    re-fetch of the MP4). Returns (files_on_camera, pulled, updated). Safe to
+    call repeatedly.
     """
     camera_row  = cameras.upsert(conn, serial, model)
     camera_id   = camera_row["id"]
@@ -137,13 +167,26 @@ async def pull_all(conn, client: httpx.AsyncClient, serial: str, model: str) -> 
         cam = cameras.get(conn, camera_id) or camera_row
         return settings.unsorted_dir(conn) / cameras.camera_slug(cam) / mf.filename
 
-    tasks = [(mf, _dest_for(mf)) for mf in media_files if not _dest_for(mf).exists()]
+    sem     = asyncio.Semaphore(2)
+    pulled  = 0
+    updated = 0
 
-    sem    = asyncio.Semaphore(2)
-    pulled = 0
-
-    async def pull_with_sem(mf, dest):
-        nonlocal pulled
+    async def handle(mf):
+        nonlocal pulled, updated
+        # Already ingested? (match by camera + filename — don't re-download to
+        # get a checksum). Backfill missing sidecars instead.
+        clip = conn.execute(
+            "SELECT * FROM clips WHERE camera_id = ? AND filename = ?",
+            (camera_id, mf.filename),
+        ).fetchone()
+        if clip:
+            async with sem:
+                if await _backfill_live(conn, client, mf, clip):
+                    updated += 1
+            return
+        dest = _dest_for(mf)
+        if dest.exists():
+            return  # file on disk without a DB row — leave it
         async with sem:
             try:
                 await _pull_file(client, mf, dest, conn, camera_row)
@@ -153,8 +196,8 @@ async def pull_all(conn, client: httpx.AsyncClient, serial: str, model: str) -> 
                 dest.unlink(missing_ok=True)
                 dest.with_name(dest.name + ".part").unlink(missing_ok=True)
 
-    await asyncio.gather(*[pull_with_sem(mf, dest) for mf, dest in tasks])
-    return len(media_files), pulled
+    await asyncio.gather(*[handle(mf) for mf in media_files])
+    return len(media_files), pulled, updated
 
 
 async def run(interface: str | None = None, serial_hint: str | None = None) -> None:
@@ -183,8 +226,8 @@ async def run(interface: str | None = None, serial_hint: str | None = None) -> N
                 pass
             keeper = asyncio.create_task(keep_alive_loop(client))
             try:
-                found, pulled = await pull_all(conn, client, serial, model)
-                print(f"Ingest complete: {model} ({serial}) — {pulled} new / {found} on camera", flush=True)
+                found, pulled, updated = await pull_all(conn, client, serial, model)
+                print(f"Ingest complete: {model} ({serial}) — {pulled} new / {updated} updated / {found} on camera", flush=True)
             finally:
                 keeper.cancel()
 
