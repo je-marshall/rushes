@@ -55,11 +55,13 @@ async def _backfill_live(conn, client: httpx.AsyncClient, mf: gopro.MediaFile, c
     if not have_proxy and mf.lrv_path:
         p = config.PROXY_DIR / f"{checksum}.mp4"
         try:
+            print(f"  proxy {mf.filename} ...", flush=True)
             await _download_to(client, mf.lrv_path, p)
             conn.execute("UPDATE clips SET proxy_path = ? WHERE id = ?", (str(p), clip["id"]))
             conn.commit(); changed = True
+            print(f"  done  {mf.filename} (proxy, {p.stat().st_size // 1024 // 1024} MB)", flush=True)
         except Exception:
-            pass
+            p.unlink(missing_ok=True)  # no .LRV for this clip / fetch failed
 
     have_thumb = clip["thumbnail_path"] and Path(clip["thumbnail_path"]).exists()
     if not have_thumb and mf.thm_path:
@@ -68,8 +70,9 @@ async def _backfill_live(conn, client: httpx.AsyncClient, mf: gopro.MediaFile, c
             await _download_to(client, mf.thm_path, p)
             conn.execute("UPDATE clips SET thumbnail_path = ? WHERE id = ?", (str(p), clip["id"]))
             conn.commit(); changed = True
+            print(f"  thumb {mf.filename}", flush=True)
         except Exception:
-            pass
+            p.unlink(missing_ok=True)
 
     return changed
 
