@@ -235,6 +235,20 @@ async def import_cancel(job_id: int):
     return RedirectResponse("/import", status_code=303)
 
 
+@app.post("/import/{job_id}/rerun")
+async def import_rerun(job_id: int):
+    conn = db.connect()
+    importer.rerun(conn, job_id)
+    return RedirectResponse("/import", status_code=303)
+
+
+@app.post("/import/clear")
+async def import_clear():
+    conn = db.connect()
+    importer.clear_finished(conn)
+    return RedirectResponse("/import", status_code=303)
+
+
 @app.get("/import/jobs.json")
 async def import_jobs_json():
     conn = db.connect()

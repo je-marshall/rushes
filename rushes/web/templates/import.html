@@ -43,6 +43,12 @@ td.src { font-family: monospace; color: #bbb; max-width: 280px; overflow: hidden
 .status.cancelled  { background: #2a2a2a; color: #888; }
 .cancel-btn { background: transparent; border: 1px solid #6a2530; color: #f0a0a8; padding: 0.2rem 0.5rem; border-radius: 4px; cursor: pointer; font-size: 0.72rem; margin: 0; }
 .cancel-btn:hover { background: #3a1518; }
+.rerun-btn { background: transparent; border: 1px solid #2a5a8f; color: #aad4ff; padding: 0.2rem 0.5rem; border-radius: 4px; cursor: pointer; font-size: 0.72rem; margin: 0; }
+.rerun-btn:hover { background: #1e3a5f; }
+.jobs-head { display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem; }
+.jobs-head h2 { margin: 0; }
+.clear-btn { margin-left: auto; background: #1e1e1e; border: 1px solid #2a2a2a; color: #999; padding: 0.35rem 0.7rem; border-radius: 4px; cursor: pointer; font-size: 0.78rem; }
+.clear-btn:hover { background: #2a2a2a; color: #ccc; }
 .bar { height: 6px; background: #222; border-radius: 3px; overflow: hidden; margin-top: 0.3rem; }
 .bar > div { height: 100%; background: #2a6abf; width: 0; transition: width 0.3s; }
 .empty { color: #555; }
@@ -102,7 +108,10 @@ table#jobs { min-width: 560px; }
     </form>
   </div>
 
-  <h2>Jobs</h2>
+  <div class="jobs-head">
+    <h2>Jobs</h2>
+    <button class="clear-btn" onclick="clearFinished()">Clear finished</button>
+  </div>
   <div class="card">
     <div class="table-wrap">
       <table id="jobs">
@@ -122,23 +131,32 @@ function render(jobs) {
   document.getElementById('empty').style.display = jobs.length ? 'none' : 'block';
   body.innerHTML = jobs.map(j => {
     const pct = j.total ? Math.round(100 * j.processed / j.total) : 0;
-    const canCancel = (j.status === 'pending' || j.status === 'running');
-    const cancelCell = canCancel
-      ? `<button class="cancel-btn" onclick="cancelJob(${j.id})">Cancel</button>`
-      : '';
+    const active   = (j.status === 'pending' || j.status === 'running');
+    const finished = (j.status === 'done' || j.status === 'error' || j.status === 'cancelled');
+    let actions = '';
+    if (active)        actions = `<button class="cancel-btn" onclick="cancelJob(${j.id})">Cancel</button>`;
+    else if (finished) actions = `<button class="rerun-btn" onclick="rerunJob(${j.id})">Re-run</button>`;
     return `<tr>
       <td>${j.id}</td>
       <td class="src" title="${j.source_path}">${j.source_path}</td>
       <td><span class="status ${j.status}">${j.status}</span></td>
       <td>${j.total ? `${j.processed}/${j.total}` : '—'}<div class="bar"><div style="width:${pct}%"></div></div></td>
       <td>${j.message || ''}</td>
-      <td>${cancelCell}</td>
+      <td>${actions}</td>
     </tr>`;
   }).join('');
 }
 
 async function cancelJob(id) {
   await fetch(`/import/${id}/cancel`, { method: 'POST' });
+  poll();
+}
+async function rerunJob(id) {
+  await fetch(`/import/${id}/rerun`, { method: 'POST' });
+  poll();
+}
+async function clearFinished() {
+  await fetch('/import/clear', { method: 'POST' });
   poll();
 }
 

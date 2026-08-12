@@ -149,6 +149,22 @@ def enqueue(conn, source_path: str):
     conn.commit()
 
 
+def clear_finished(conn) -> int:
+    """Remove done/error/cancelled jobs from the list. Leaves pending/running."""
+    cur = conn.execute(
+        "DELETE FROM import_jobs WHERE status IN ('done', 'error', 'cancelled')"
+    )
+    conn.commit()
+    return cur.rowcount
+
+
+def rerun(conn, job_id: int) -> None:
+    """Queue a fresh job with the same source path (re-import is idempotent)."""
+    row = conn.execute("SELECT source_path FROM import_jobs WHERE id = ?", (job_id,)).fetchone()
+    if row:
+        enqueue(conn, row["source_path"])
+
+
 def claim_pending(conn):
     row = conn.execute(
         "SELECT * FROM import_jobs WHERE status = 'pending' ORDER BY id LIMIT 1"
