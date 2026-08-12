@@ -45,11 +45,13 @@ class MediaFile:
     directory: str
     size:      int
     created:   int | None = None   # 'cre' from the media list — Unix seconds (camera clock)
-    thm_name:  str | None = None   # the camera's .THM thumbnail for this clip, if present
-    lrv_name:  str | None = None   # the camera's .LRV low-res proxy for this clip, if present
 
     def _path(self, name: str) -> str:
         return f"/videos/DCIM/{self.directory}/{name}"
+
+    @property
+    def _stem(self) -> str:
+        return self.filename.rsplit(".", 1)[0]
 
     @property
     def download_path(self) -> str:
@@ -58,11 +60,18 @@ class MediaFile:
 
     @property
     def thm_path(self) -> str | None:
-        return self._path(self.thm_name) if self.thm_name else None
+        # The .THM shares the clip's stem (GX010001.MP4 -> GX010001.THM). These
+        # sidecars aren't in /media/list but the camera serves them by path, so
+        # we construct the URL and let the download 404 if it doesn't exist.
+        return self._path(self._stem + ".THM")
 
     @property
     def lrv_path(self) -> str | None:
-        return self._path(self.lrv_name) if self.lrv_name else None
+        # The .LRV proxy uses a 'GL' prefix (GX010001.MP4 -> GL010001.LRV).
+        stem = self._stem
+        if len(stem) < 3:
+            return None
+        return self._path("GL" + stem[2:] + ".LRV")
 
 
 def _tail(name: str) -> str:
@@ -131,21 +140,14 @@ async def get_media_list(client: httpx.AsyncClient) -> list[MediaFile]:
     resp.raise_for_status()
     files: list[MediaFile] = []
     for media_dir in resp.json().get("media", []):
-        d       = media_dir["d"]
-        entries = media_dir.get("fs", [])
-        # Index the .LRV / .THM siblings by their AABBBB tail so each clip can
-        # claim its own proxy + thumbnail.
-        lrv = {_tail(f["n"]): f["n"] for f in entries if f["n"].upper().endswith(".LRV")}
-        thm = {_tail(f["n"]): f["n"] for f in entries if f["n"].upper().endswith(".THM")}
-        for f in entries:
+        d = media_dir["d"]
+        for f in media_dir.get("fs", []):
             name = f["n"]
             if not name.upper().endswith(".MP4"):
-                continue
+                continue  # skip photos; .LRV/.THM aren't listed (constructed instead)
             created = f.get("cre")
             files.append(MediaFile(
                 filename=name, directory=d, size=int(f.get("s", 0)),
                 created=int(created) if created else None,
-                thm_name=thm.get(_tail(name)),
-                lrv_name=lrv.get(_tail(name)),
             ))
     return files
