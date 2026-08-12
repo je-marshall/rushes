@@ -21,6 +21,12 @@ def create(conn: sqlite3.Connection, name: str, description: str = "") -> sqlite
     return conn.execute("SELECT * FROM events WHERE slug = ?", (slug,)).fetchone()
 
 
+def get_or_create(conn: sqlite3.Connection, name: str) -> sqlite3.Row:
+    """Return the event with this name's slug, creating it if needed."""
+    row = conn.execute("SELECT * FROM events WHERE slug = ?", (slugify(name),)).fetchone()
+    return row if row else create(conn, name)
+
+
 def assign_clips(conn: sqlite3.Connection, clip_ids: list[int], event_id: int) -> None:
     """
     Move clips into the event folder and update the DB.

@@ -115,10 +115,19 @@ async def clip_download(clip_id: int):
 
 
 @app.post("/clips/assign")
-async def assign_clips(event_id: int = Form(...), clip_ids: str = Form(...)):
+async def assign_clips(clip_ids: str = Form(...), event_id: str = Form(""),
+                       new_event: str = Form("")):
     ids  = [int(i) for i in clip_ids.split(",") if i.strip()]
     conn = db.connect()
-    ev.assign_clips(conn, ids, event_id)
+    new_event = new_event.strip()
+    if new_event:
+        target = ev.get_or_create(conn, new_event)["id"]
+    elif event_id:
+        target = int(event_id)
+    else:
+        return RedirectResponse("/", status_code=303)  # nothing chosen
+    if ids:
+        ev.assign_clips(conn, ids, target)
     return RedirectResponse("/", status_code=303)
 
 

@@ -28,6 +28,8 @@ nav a.active { background: #333; color: #fff; }
 #assign-bar.visible { display: flex; }
 #assign-bar span { font-size: 0.85rem; color: #aad4ff; }
 #assign-bar select { background: #0f2a45; border: 1px solid #2a5a8f; color: #eee; padding: 0.3rem 0.6rem; border-radius: 4px; font-size: 0.85rem; }
+#assign-bar input[type=text] { background: #0f2a45; border: 1px solid #2a5a8f; color: #eee; padding: 0.3rem 0.6rem; border-radius: 4px; font-size: 0.85rem; width: 12rem; }
+#assign-bar .or { color: #7fa8d4; font-size: 0.78rem; }
 #assign-bar button { background: #2a6abf; border: none; color: #fff; padding: 0.35rem 0.8rem; border-radius: 4px; cursor: pointer; font-size: 0.85rem; }
 #assign-bar button:hover { background: #3a7acf; }
 #deselect-btn { background: transparent; border: 1px solid #2a5a8f; color: #aad4ff; padding: 0.3rem 0.6rem; border-radius: 4px; cursor: pointer; font-size: 0.8rem; margin-left: auto; }
@@ -144,6 +146,8 @@ body.select-mode .play-btn { display: none; }
       <option value="{{ evt.id }}">{{ evt.name }}</option>
       {% endfor %}
     </select>
+    <span class="or">or</span>
+    <input type="text" name="new_event" placeholder="new event name" autocomplete="off" spellcheck="false">
     <button type="submit">Move</button>
   </form>
   <button id="deselect-btn" type="button" onclick="clearSelection()">✕ Deselect all</button>
