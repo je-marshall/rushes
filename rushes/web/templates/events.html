@@ -131,6 +131,14 @@ body.select-mode .play-btn { display: none; }
   header > form[action="/logout"] { display: none; width: 100%; margin-left: 0; }
   body.nav-open nav { display: flex; }
   body.nav-open header > form[action="/logout"] { display: block; }
+
+  /* stop the event header + forms overflowing to the right */
+  .page { padding: 1rem; }
+  .event-header { flex-wrap: wrap; }
+  .event-header .count { margin-left: 0; }
+  .rename-form { margin-left: 0; width: 100%; }
+  .rename-form input { flex: 1 1 auto; min-width: 0; }
+  .create-form label, .create-form input, .create-form textarea { width: 100%; }
 }
 </style>
 </head>
