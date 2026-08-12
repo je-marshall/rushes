@@ -17,7 +17,7 @@ import shutil
 from datetime import datetime
 from pathlib import Path
 
-from . import cameras, db, ingest, metadata, recorded, settings
+from . import cameras, db, gopro, ingest, metadata, recorded, settings, thumbs
 
 VIDEO_EXTS = {".mp4"}
 
@@ -26,6 +26,23 @@ def _iter_videos(source: Path):
     for p in sorted(source.rglob("*")):
         if p.is_file() and p.suffix.lower() in VIDEO_EXTS and not p.name.endswith(".part"):
             yield p
+
+
+def _find_aux(video: Path) -> tuple[Path | None, Path | None]:
+    """Find the sibling .THM thumbnail and .LRV proxy next to a card-dumped
+    clip, matched by GoPro's AABBBB file-identity tail."""
+    tail = gopro._tail(video.name)
+    thm = lrv = None
+    try:
+        for p in video.parent.iterdir():
+            if not p.is_file() or gopro._tail(p.name) != tail:
+                continue
+            suf = p.suffix.upper()
+            if   suf == ".THM": thm = p
+            elif suf == ".LRV": lrv = p
+    except OSError:
+        pass
+    return thm, lrv
 
 
 def _sha256(path: Path) -> str:
@@ -61,10 +78,18 @@ async def import_file(conn, path: Path) -> str:
     await asyncio.to_thread(shutil.copy2, path, part)   # copy2 preserves mtime
     part.replace(dest)
 
+    # Use the card's own .THM / .LRV when present (no decode; playable proxy).
+    thm, lrv = _find_aux(path)
+    thumb_path = thumbs.save_image(thm, checksum) if thm else None
+    if not thumb_path:
+        thumb_path = await thumbs.generate(dest, checksum)
+    proxy_path = thumbs.save_proxy(lrv, checksum) if lrv else None
+
     # Recording time only. If the file has no (plausible) recording date we leave
     # it undated rather than guessing from mtime — see "fix timestamps" TODO.
     recorded_at = recorded.pick(recorded.from_exif(meta.exif_date))
-    await ingest.finalize_clip(conn, camera, dest, dest.stat().st_size, checksum, recorded_at)
+    ingest.finalize_clip(conn, camera, dest, dest.stat().st_size, checksum,
+                         recorded_at, thumb_path, proxy_path)
     return "imported"
 
 

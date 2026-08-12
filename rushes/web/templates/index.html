@@ -274,13 +274,13 @@ function updateBar() {
 // --- player ---
 const video = document.getElementById('player-video');
 function openPlayer(id, filename) {
-  const url = `/clip/${id}/video`;
+  const dl = `/clip/${id}/download`;
   document.getElementById('player-title').textContent = filename || '';
-  document.getElementById('player-download').href = url;
-  document.getElementById('player-error-dl').href = url;
+  document.getElementById('player-download').href = dl;
+  document.getElementById('player-error-dl').href = dl;
   document.getElementById('player-error').style.display = 'none';
   video.style.display = 'block';
-  video.src = url;
+  video.src = `/clip/${id}/video`;
   document.getElementById('player').classList.add('visible');
   video.play().catch(() => {});
 }

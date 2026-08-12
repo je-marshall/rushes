@@ -88,6 +88,22 @@ async def unsorted_json(favourite: bool = False, flagged: bool = False):
 
 @app.get("/clip/{clip_id}/video")
 async def clip_video(clip_id: int):
+    """Playback stream — prefer the H.264 proxy (plays in any browser), falling
+    back to the original (which may be HEVC and not decode everywhere)."""
+    conn = db.connect()
+    row  = conn.execute("SELECT ingest_path, proxy_path, filename FROM clips WHERE id = ?", (clip_id,)).fetchone()
+    if not row:
+        return HTMLResponse("clip not found", status_code=404)
+    proxy = row["proxy_path"]
+    path  = Path(proxy) if proxy and Path(proxy).exists() else Path(row["ingest_path"])
+    if not path.exists():
+        return HTMLResponse("file missing", status_code=404)
+    return FileResponse(str(path), media_type="video/mp4")   # honours Range → seeking
+
+
+@app.get("/clip/{clip_id}/download")
+async def clip_download(clip_id: int):
+    """Always the original, full-quality file."""
     conn = db.connect()
     row  = conn.execute("SELECT ingest_path, filename FROM clips WHERE id = ?", (clip_id,)).fetchone()
     if not row:
@@ -95,7 +111,6 @@ async def clip_video(clip_id: int):
     path = Path(row["ingest_path"])
     if not path.exists():
         return HTMLResponse("file missing", status_code=404)
-    # FileResponse honours Range requests, so the browser can seek.
     return FileResponse(str(path), media_type="video/mp4", filename=row["filename"])
 
 

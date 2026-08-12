@@ -8,32 +8,41 @@ from pathlib import Path
 
 import httpx
 
-from . import cameras, db, gopro, netsetup, recorded, settings, thumbs
+from . import cameras, config, db, gopro, netsetup, recorded, settings, thumbs
 
 
-async def finalize_clip(conn, camera_row, dest: Path, size: int,
-                        checksum: str, recorded_at: str | None) -> None:
-    """Thumbnail + probe + DB insert for a file already sitting at `dest`.
-    Shared by live download and bulk import. Insert is idempotent (checksum
-    and ingest_path are UNIQUE)."""
-    thumb_path = await thumbs.generate(dest)
-    duration   = _probe_duration(dest)
+def finalize_clip(conn, camera_row, dest: Path, size: int, checksum: str,
+                  recorded_at: str | None, thumb_path: Path | None,
+                  proxy_path: Path | None) -> None:
+    """Probe + DB insert for a file already at `dest`, with a resolved thumbnail
+    and optional proxy. Shared by live download and bulk import. Idempotent
+    (checksum and ingest_path are UNIQUE)."""
+    duration = _probe_duration(dest)
     conn.execute(
         """
         INSERT OR IGNORE INTO clips
             (filename, ingest_path, recorded_at, ingested_at, camera_id,
              camera_serial, camera_model, duration_secs, size_bytes, checksum,
-             thumbnail_path)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             thumbnail_path, proxy_path)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             dest.name, str(dest), recorded_at, datetime.now().isoformat(),
             camera_row["id"], camera_row["serial"], camera_row["model"],
             duration, size, checksum,
             str(thumb_path) if thumb_path else None,
+            str(proxy_path) if proxy_path else None,
         ),
     )
     conn.commit()
+
+
+async def _download_to(client: httpx.AsyncClient, url: str, path: Path) -> None:
+    async with client.stream("GET", url) as resp:
+        resp.raise_for_status()
+        with open(path, "wb") as fh:
+            async for chunk in resp.aiter_bytes(65536):
+                fh.write(chunk)
 
 
 async def _pull_file(
@@ -59,9 +68,32 @@ async def _pull_file(
                 fh.write(chunk)
                 sha.update(chunk)
     os.replace(part, dest)
+    checksum = sha.hexdigest()
+
+    # Thumbnail: prefer the camera's own .THM (no decode); else extract a frame.
+    thumb_path = None
+    if mf.thm_path:
+        p = config.THUMB_DIR / f"{checksum}.jpg"
+        try:
+            await _download_to(client, mf.thm_path, p)
+            thumb_path = p
+        except Exception:
+            thumb_path = None
+    if not thumb_path:
+        thumb_path = await thumbs.generate(dest, checksum)
+
+    # Proxy: pull the camera's low-res .LRV (H.264) for browser playback.
+    proxy_path = None
+    if mf.lrv_path:
+        p = config.PROXY_DIR / f"{checksum}.mp4"
+        try:
+            await _download_to(client, mf.lrv_path, p)
+            proxy_path = p
+        except Exception:
+            proxy_path = None
 
     recorded_at = recorded.pick(recorded.from_unix(mf.created))
-    await finalize_clip(conn, camera_row, dest, mf.size, sha.hexdigest(), recorded_at)
+    finalize_clip(conn, camera_row, dest, mf.size, checksum, recorded_at, thumb_path, proxy_path)
     print(f"  done  {mf.filename}", flush=True)
 
 

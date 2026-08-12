@@ -44,7 +44,8 @@ def init_db(conn: sqlite3.Connection) -> None:
             checksum       TEXT    UNIQUE,
             is_favourite   INTEGER NOT NULL DEFAULT 0,
             flagged        INTEGER NOT NULL DEFAULT 0,
-            thumbnail_path TEXT
+            thumbnail_path TEXT,
+            proxy_path     TEXT
         );
 
         CREATE INDEX IF NOT EXISTS idx_clips_recorded ON clips(recorded_at);
@@ -69,4 +70,8 @@ def init_db(conn: sqlite3.Connection) -> None:
             updated_at  TEXT
         );
     """)
+    # Migration: add proxy_path to a pre-existing clips table.
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(clips)")]
+    if "proxy_path" not in cols:
+        conn.execute("ALTER TABLE clips ADD COLUMN proxy_path TEXT")
     conn.commit()
