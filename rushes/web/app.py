@@ -179,6 +179,16 @@ async def create_event(name: str = Form(...), description: str = Form("")):
     return RedirectResponse("/events", status_code=303)
 
 
+@app.post("/events/{event_id}/rename")
+async def rename_event(event_id: int, name: str = Form(...)):
+    conn = db.connect()
+    try:
+        ev.rename(conn, event_id, name)
+    except ValueError:
+        pass  # e.g. empty or duplicate name — leave the event unchanged
+    return RedirectResponse("/events", status_code=303)
+
+
 @app.post("/events/{event_id}/unassign")
 async def unassign_clips(event_id: int, clip_ids: str = Form(...)):
     ids  = [int(i) for i in clip_ids.split(",") if i.strip()]

@@ -87,6 +87,10 @@ nav a.active { background: #333; color: #fff; }
   padding: 0.3rem 0.7rem; border-radius: 4px; cursor: pointer; font-size: 0.8rem;
 }
 .empty-event { color: #444; font-size: 0.85rem; padding: 1rem 0; }
+.rename-form { display: inline-flex; gap: 0.4rem; margin-left: 0.75rem; }
+.rename-form input { background: #0f0f0f; border: 1px solid #333; color: #eee; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.85rem; }
+.rename-form button { background: #1e1e1e; border: 1px solid #2a2a2a; color: #999; padding: 0.25rem 0.6rem; border-radius: 4px; cursor: pointer; font-size: 0.78rem; }
+.rename-form button:hover { background: #2a2a2a; color: #ccc; }
 
 /* Mobile: collapse nav into a burger menu */
 .burger { display: none; background: none; border: none; color: #ccc; font-size: 1.5rem; cursor: pointer; padding: 0.2rem 0.5rem; line-height: 1; }
@@ -144,6 +148,10 @@ nav a.active { background: #333; color: #fff; }
       <h2>{{ evt.name }}</h2>
       <span class="slug">{{ evt.slug }}/</span>
       <span class="count">{{ clips | length }} clip{{ 's' if clips | length != 1 }}</span>
+      <form class="rename-form" method="post" action="/events/{{ evt.id }}/rename">
+        <input name="name" value="{{ evt.name }}" required autocomplete="off">
+        <button type="submit">Rename</button>
+      </form>
     </div>
 
     {% if not clips %}
