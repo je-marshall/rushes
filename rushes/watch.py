@@ -118,9 +118,18 @@ async def _handle(iface: str) -> None:
             keeper = asyncio.create_task(ingest.keep_alive_loop(client))
             try:
                 first = True
+
+                def _progress(done, total, pulled, updated):
+                    # Only chatter when real work is happening, and only now and
+                    # then, so a long backfill shows movement without flooding.
+                    if (pulled + updated) and done % 20 == 0:
+                        log.info("%s: %d/%d processed (%d new, %d updated)…",
+                                 serial, done, total, pulled, updated)
+
                 while _present(iface):
                     try:
-                        found, pulled, updated = await ingest.pull_all(conn, client, serial, model)
+                        found, pulled, updated = await ingest.pull_all(
+                            conn, client, serial, model, on_progress=_progress)
                         if pulled or updated or first:
                             log.info("%s: %d new, %d updated, %d on camera", serial, pulled, updated, found)
                         first = False

@@ -150,16 +150,18 @@ async def connect(client: httpx.AsyncClient) -> dict:
     return await gopro.get_state(client)
 
 
-async def pull_all(conn, client: httpx.AsyncClient, serial: str, model: str) -> tuple[int, int, int]:
+async def pull_all(conn, client: httpx.AsyncClient, serial: str, model: str,
+                   on_progress=None) -> tuple[int, int, int]:
     """
     Sync this camera: pull new MP4s, and backfill the .LRV proxy / .THM thumbnail
     for clips we already have but are missing them (small downloads only, no
     re-fetch of the MP4). Returns (files_on_camera, pulled, updated). Safe to
-    call repeatedly.
+    call repeatedly. on_progress(done, total, pulled, updated) fires per file.
     """
     camera_row  = cameras.upsert(conn, serial, model)
     camera_id   = camera_row["id"]
     media_files = await gopro.get_media_list(client)
+    total       = len(media_files)
 
     def _dest_for(mf) -> Path:
         # Resolve the folder per file from the current DB state, so a camera
@@ -170,34 +172,40 @@ async def pull_all(conn, client: httpx.AsyncClient, serial: str, model: str) -> 
     sem     = asyncio.Semaphore(2)
     pulled  = 0
     updated = 0
+    done    = 0
 
     async def handle(mf):
-        nonlocal pulled, updated
-        # Already ingested? (match by camera + filename — don't re-download to
-        # get a checksum). Backfill missing sidecars instead.
-        clip = conn.execute(
-            "SELECT * FROM clips WHERE camera_id = ? AND filename = ?",
-            (camera_id, mf.filename),
-        ).fetchone()
-        if clip:
+        nonlocal pulled, updated, done
+        try:
+            # Already ingested? (match by camera + filename — don't re-download
+            # to get a checksum). Backfill missing sidecars instead.
+            clip = conn.execute(
+                "SELECT * FROM clips WHERE camera_id = ? AND filename = ?",
+                (camera_id, mf.filename),
+            ).fetchone()
+            if clip:
+                async with sem:
+                    if await _backfill_live(conn, client, mf, clip):
+                        updated += 1
+                return
+            dest = _dest_for(mf)
+            if dest.exists():
+                return  # file on disk without a DB row — leave it
             async with sem:
-                if await _backfill_live(conn, client, mf, clip):
-                    updated += 1
-            return
-        dest = _dest_for(mf)
-        if dest.exists():
-            return  # file on disk without a DB row — leave it
-        async with sem:
-            try:
-                await _pull_file(client, mf, dest, conn, camera_row)
-                pulled += 1
-            except Exception as exc:
-                print(f"  ERROR {mf.filename}: {exc}", flush=True)
-                dest.unlink(missing_ok=True)
-                dest.with_name(dest.name + ".part").unlink(missing_ok=True)
+                try:
+                    await _pull_file(client, mf, dest, conn, camera_row)
+                    pulled += 1
+                except Exception as exc:
+                    print(f"  ERROR {mf.filename}: {exc}", flush=True)
+                    dest.unlink(missing_ok=True)
+                    dest.with_name(dest.name + ".part").unlink(missing_ok=True)
+        finally:
+            done += 1
+            if on_progress:
+                on_progress(done, total, pulled, updated)
 
     await asyncio.gather(*[handle(mf) for mf in media_files])
-    return len(media_files), pulled, updated
+    return total, pulled, updated
 
 
 async def run(interface: str | None = None, serial_hint: str | None = None) -> None:
@@ -225,8 +233,13 @@ async def run(interface: str | None = None, serial_hint: str | None = None) -> N
             except httpx.HTTPError:
                 pass
             keeper = asyncio.create_task(keep_alive_loop(client))
+
+            def _progress(done, total, pulled, updated):
+                if (pulled + updated) and done % 10 == 0:
+                    print(f"  {done}/{total} ({pulled} new, {updated} updated)...", flush=True)
+
             try:
-                found, pulled, updated = await pull_all(conn, client, serial, model)
+                found, pulled, updated = await pull_all(conn, client, serial, model, on_progress=_progress)
                 print(f"Ingest complete: {model} ({serial}) — {pulled} new / {updated} updated / {found} on camera", flush=True)
             finally:
                 keeper.cancel()
