@@ -53,20 +53,45 @@ def _sha256(path: Path) -> str:
     return sha.hexdigest()
 
 
-def _checksum_exists(conn, checksum: str) -> bool:
-    return conn.execute("SELECT 1 FROM clips WHERE checksum = ?", (checksum,)).fetchone() is not None
+async def _backfill(conn, clip, source: Path) -> bool:
+    """For an already-imported clip, pull in any .LRV proxy / .THM thumbnail we
+    don't yet have, from the source file's siblings. Returns True if anything
+    was added. Never clobbers an existing proxy/thumbnail."""
+    thm, lrv = _find_aux(source)
+    checksum = clip["checksum"]
+    changed  = False
+
+    have_proxy = clip["proxy_path"] and Path(clip["proxy_path"]).exists()
+    if not have_proxy and lrv:
+        p = thumbs.save_proxy(lrv, checksum)
+        if p:
+            conn.execute("UPDATE clips SET proxy_path = ? WHERE id = ?", (str(p), clip["id"]))
+            changed = True
+
+    have_thumb = clip["thumbnail_path"] and Path(clip["thumbnail_path"]).exists()
+    if not have_thumb and thm:
+        p = thumbs.save_image(thm, checksum)
+        if p:
+            conn.execute("UPDATE clips SET thumbnail_path = ? WHERE id = ?", (str(p), clip["id"]))
+            changed = True
+
+    if changed:
+        conn.commit()
+    return changed
 
 
 async def import_file(conn, path: Path) -> str:
-    """Import one file. Returns 'imported' or 'skipped'."""
+    """Import one file. Returns 'imported', 'updated' (backfilled proxy/thumb on
+    an existing clip), or 'skipped'."""
     meta   = metadata.extract(path)
     serial = (meta.serial or "unknown").strip() or "unknown"
     camera = cameras.upsert(conn, serial, meta.model or "GoPro")
 
     # Dedup by content before copying anything, so re-runs are cheap.
     checksum = await asyncio.to_thread(_sha256, path)
-    if _checksum_exists(conn, checksum):
-        return "skipped"
+    existing = conn.execute("SELECT * FROM clips WHERE checksum = ?", (checksum,)).fetchone()
+    if existing:
+        return "updated" if await _backfill(conn, existing, path) else "skipped"
 
     dest_dir = settings.unsorted_dir(conn) / cameras.camera_slug(camera)
     dest_dir.mkdir(parents=True, exist_ok=True)
@@ -94,10 +119,10 @@ async def import_file(conn, path: Path) -> str:
 
 
 async def run_import(conn, source: Path, on_progress=None,
-                     is_cancelled=None) -> tuple[int, int, int, bool]:
+                     is_cancelled=None) -> tuple[int, int, int, int, bool]:
     files    = list(_iter_videos(source))
     total    = len(files)
-    imported = skipped = 0
+    imported = skipped = updated = 0
     cancelled = False
     for i, path in enumerate(files, 1):
         # Stop cleanly at a file boundary — never mid-copy.
@@ -105,16 +130,16 @@ async def run_import(conn, source: Path, on_progress=None,
             cancelled = True
             break
         try:
-            if await import_file(conn, path) == "imported":
-                imported += 1
-            else:
-                skipped += 1
+            outcome = await import_file(conn, path)
+            if   outcome == "imported": imported += 1
+            elif outcome == "updated":  updated  += 1
+            else:                       skipped  += 1
         except Exception as exc:
             skipped += 1
             print(f"  import ERROR {path}: {exc}", flush=True)
         if on_progress:
-            on_progress(i, total, imported, skipped)
-    return total, imported, skipped, cancelled
+            on_progress(i, total, imported, skipped, updated)
+    return total, imported, skipped, updated, cancelled
 
 
 # --- background job plumbing (used by rushes-watch) -------------------------
@@ -171,10 +196,10 @@ async def run_job(conn, job) -> None:
         conn.commit()
         return
 
-    def progress(i, total, imported, skipped):
+    def progress(i, total, imported, skipped, updated):
         conn.execute(
             "UPDATE import_jobs SET total=?, processed=?, imported=?, skipped=?, updated_at=? WHERE id=?",
-            (total, i, imported, skipped, now(), job_id),
+            (total, i, imported, skipped + updated, now(), job_id),
         )
         conn.commit()
 
@@ -183,9 +208,9 @@ async def run_job(conn, job) -> None:
         return bool(r) and r["status"] == "cancelling"
 
     try:
-        total, imported, skipped, cancelled = await run_import(conn, source, progress, is_cancelled)
+        total, imported, skipped, updated, cancelled = await run_import(conn, source, progress, is_cancelled)
         status  = "cancelled" if cancelled else "done"
-        summary = f"{imported} imported, {skipped} skipped of {total}"
+        summary = f"{imported} imported, {updated} updated, {skipped} skipped of {total}"
         conn.execute(
             "UPDATE import_jobs SET status=?, message=?, updated_at=? WHERE id=?",
             (status, summary + (" (cancelled)" if cancelled else ""), now(), job_id),
@@ -210,8 +235,8 @@ def main() -> None:
     conn = db.connect()
     db.init_db(conn)
 
-    def prog(i, total, imported, skipped):
-        print(f"  [{i}/{total}] imported={imported} skipped={skipped}", flush=True)
+    def prog(i, total, imported, skipped, updated):
+        print(f"  [{i}/{total}] imported={imported} updated={updated} skipped={skipped}", flush=True)
 
-    total, imported, skipped, _ = asyncio.run(run_import(conn, Path(args.source), prog))
-    print(f"Done: {imported} imported, {skipped} skipped of {total}", flush=True)
+    total, imported, skipped, updated, _ = asyncio.run(run_import(conn, Path(args.source), prog))
+    print(f"Done: {imported} imported, {updated} updated, {skipped} skipped of {total}", flush=True)

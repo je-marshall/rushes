@@ -70,10 +70,14 @@ that camera is busy. More moving parts than the serial-keyed approach.
 - #2 live-updating grid + hover-play + YouTube-style selection + video playback
   (GET /clip/{id}/video, Range-enabled).
 
-### 2c. Playback proxy for HEVC (NEW, follow-up to playback)
-Browsers can't play GoPro HEVC/H.265 clips natively. Add a transcoded/streamed
-H.264 proxy for the player (on-the-fly ffmpeg, or pre-generated low-res proxy —
-the .LRV files we currently skip are exactly this and could be repurposed).
+### 2c. Playback proxy for HEVC — DONE
+Solved by pulling GoPro's .LRV (H.264 low-res proxy) and streaming it in the
+player; .THM used as the thumbnail. Only affects clips ingested/imported AFTER
+this change — existing clips have no proxy_path (re-import won't add one, since
+checksum-dedup skips them). To backfill proxies for already-imported footage,
+either wipe+reimport, or write a one-off pass that pulls .LRV/.THM for existing
+clips. Also: not every GoPro mode produces an .LRV — those clips fall back to the
+(possibly HEVC, non-playable) original + Download.
 
 ### 2. Live-updating web UI (NEW) — DONE
 As clips ingest, the Unsorted grid should update without a manual refresh.
