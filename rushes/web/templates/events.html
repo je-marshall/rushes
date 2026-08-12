@@ -102,10 +102,8 @@ body.select-mode .play-btn { display: none; }
   padding: 0.3rem 0.7rem; border-radius: 4px; cursor: pointer; font-size: 0.8rem;
 }
 .empty-event { color: #444; font-size: 0.85rem; padding: 1rem 0; }
-.rename-form { display: inline-flex; gap: 0.4rem; margin-left: 0.75rem; }
-.rename-form input { background: #0f0f0f; border: 1px solid #333; color: #eee; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.85rem; }
-.rename-form button { background: #1e1e1e; border: 1px solid #2a2a2a; color: #999; padding: 0.25rem 0.6rem; border-radius: 4px; cursor: pointer; font-size: 0.78rem; }
-.rename-form button:hover { background: #2a2a2a; color: #ccc; }
+.rename-btn { margin-left: 0.5rem; background: #1e1e1e; border: 1px solid #2a2a2a; color: #999; padding: 0.25rem 0.6rem; border-radius: 4px; cursor: pointer; font-size: 0.75rem; }
+.rename-btn:hover { background: #2a2a2a; color: #ccc; }
 
 /* Player overlay (shared look with Unsorted) */
 #player { display: none; position: fixed; inset: 0; z-index: 40; background: rgba(0,0,0,0.9); align-items: center; justify-content: center; padding: 1.5rem; }
@@ -156,9 +154,7 @@ dialog input { display: block; width: 100%; margin-top: 0.3rem; background: #111
   .page { padding: 1rem; }
   .event-header { flex-wrap: wrap; }
   .event-header .count { margin-left: 0; }
-  .rename-form { margin-left: 0; width: 100%; }
-  .rename-form input { flex: 1 1 auto; min-width: 0; }
-  .create-form label, .create-form input, .create-form textarea { width: 100%; }
+  .rename-btn { margin-left: 0; }
 }
 </style>
 </head>
@@ -202,6 +198,19 @@ dialog input { display: block; width: 100%; margin-top: 0.3rem; background: #111
     </form>
   </dialog>
 
+  <dialog id="rename-dialog">
+    <form method="post" id="rename-form">
+      <h3>Rename event</h3>
+      <label>Name
+        <input name="name" id="rename-input" required autocomplete="off">
+      </label>
+      <div class="dialog-actions">
+        <button type="button" class="secondary" onclick="document.getElementById('rename-dialog').close()">Cancel</button>
+        <button type="submit">Rename</button>
+      </div>
+    </form>
+  </dialog>
+
   {% if not event_data %}
     <p style="color:#555">No events yet — create one above, then assign clips from the Unsorted view.</p>
   {% endif %}
@@ -216,10 +225,8 @@ dialog input { display: block; width: 100%; margin-top: 0.3rem; background: #111
       <span class="slug">{{ evt.slug }}/</span>
       {% if clips and clips[0].recorded_at %}<span class="ev-date">{{ clips[0].recorded_at[:10] }}</span>{% endif %}
       <span class="count">{{ clips | length }} clip{{ 's' if clips | length != 1 }}</span>
-      <form class="rename-form" method="post" action="/events/{{ evt.id }}/rename" onclick="event.stopPropagation()">
-        <input name="name" value="{{ evt.name }}" required autocomplete="off">
-        <button type="submit">Rename</button>
-      </form>
+      <button class="rename-btn" type="button" data-id="{{ evt.id }}" data-name="{{ evt.name }}"
+              onclick="event.stopPropagation(); openRename(this)">Rename</button>
     </div>
     <div class="event-body">
 
@@ -276,8 +283,15 @@ dialog input { display: block; width: 100%; margin-top: 0.3rem; background: #111
 // Collapse / expand an event (collapsed by default). Ignore clicks on the
 // rename form so editing the name doesn't toggle the section.
 function toggleCollapse(header, e) {
-  if (e.target.closest('.rename-form')) return;
+  if (e.target.closest('.rename-btn')) return;
   header.closest('.event-block').classList.toggle('collapsed');
+}
+
+function openRename(btn) {
+  const form = document.getElementById('rename-form');
+  form.action = `/events/${btn.dataset.id}/rename`;
+  document.getElementById('rename-input').value = btn.dataset.name;
+  document.getElementById('rename-dialog').showModal();
 }
 
 // Selection is per event (each event unassigns its own clips), but "select mode"
