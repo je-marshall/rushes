@@ -121,6 +121,26 @@ body.select-mode .play-btn { display: none; }
 #player-error { display: none; background: #1a1a1a; border: 1px solid #3a1518; color: #f0a0a8; padding: 1.5rem; border-radius: 6px; max-width: 30rem; text-align: center; font-size: 0.9rem; line-height: 1.6; }
 #player-error a { color: #aad4ff; }
 
+/* New-event button + dialog */
+.new-event-btn { background: #2a6abf; border: none; color: #fff; padding: 0.5rem 1rem; border-radius: 5px; cursor: pointer; font-size: 0.9rem; margin-bottom: 1.5rem; }
+.new-event-btn:hover { background: #3a7acf; }
+dialog { background: #1a1a1a; color: #e0e0e0; border: 1px solid #2a2a2a; border-radius: 8px; padding: 1.5rem; width: min(420px, 92vw); }
+dialog::backdrop { background: rgba(0,0,0,0.6); }
+dialog h3 { font-size: 1rem; color: #fff; margin-bottom: 1rem; }
+dialog label { display: block; font-size: 0.8rem; color: #888; margin-bottom: 0.9rem; }
+dialog input { display: block; width: 100%; margin-top: 0.3rem; background: #111; border: 1px solid #333; color: #eee; padding: 0.5rem 0.6rem; border-radius: 4px; font-size: 0.9rem; }
+.dialog-actions { display: flex; justify-content: flex-end; gap: 0.6rem; margin-top: 0.5rem; }
+.dialog-actions button { padding: 0.45rem 1rem; border-radius: 5px; cursor: pointer; font-size: 0.85rem; border: none; }
+.dialog-actions button[type=submit] { background: #2a6abf; color: #fff; }
+.dialog-actions button.secondary { background: #2a2a2a; color: #bbb; }
+
+/* Collapsible events */
+.event-header { cursor: pointer; }
+.chevron { color: #666; font-size: 0.8rem; display: inline-block; transition: transform 0.15s; }
+.event-block:not(.collapsed) .chevron { transform: rotate(90deg); }
+.event-block.collapsed .event-body { display: none; }
+.ev-date { font-size: 0.72rem; color: #888; }
+
 /* Mobile: collapse nav into a burger menu */
 .burger { display: none; background: none; border: none; color: #ccc; font-size: 1.5rem; cursor: pointer; padding: 0.2rem 0.5rem; line-height: 1; }
 @media (max-width: 680px) {
@@ -163,15 +183,24 @@ body.select-mode .play-btn { display: none; }
 
 <div class="page">
 
-  <form class="create-form" method="post" action="/events/create">
-    <label>Event name
-      <input name="name" placeholder="Pembrokeshire beach, Aug 2025" required>
-    </label>
-    <label>Description (optional)
-      <input name="description" placeholder="3-day trip, Hero 10 + Hero 13">
-    </label>
-    <button type="submit">Create event</button>
-  </form>
+  <button class="new-event-btn" type="button"
+          onclick="document.getElementById('create-dialog').showModal()">+ New event</button>
+
+  <dialog id="create-dialog">
+    <form method="post" action="/events/create">
+      <h3>New event</h3>
+      <label>Name
+        <input name="name" placeholder="Pembrokeshire beach, Aug 2025" required>
+      </label>
+      <label>Description (optional)
+        <input name="description" placeholder="3-day trip, Hero 10 + Hero 13">
+      </label>
+      <div class="dialog-actions">
+        <button type="button" class="secondary" onclick="document.getElementById('create-dialog').close()">Cancel</button>
+        <button type="submit">Create event</button>
+      </div>
+    </form>
+  </dialog>
 
   {% if not event_data %}
     <p style="color:#555">No events yet — create one above, then assign clips from the Unsorted view.</p>
@@ -180,16 +209,19 @@ body.select-mode .play-btn { display: none; }
   {% for ed in event_data %}
   {% set evt = ed.event %}
   {% set clips = ed.clips %}
-  <div class="event-block" id="event-{{ evt.id }}">
-    <div class="event-header">
+  <div class="event-block collapsed" id="event-{{ evt.id }}">
+    <div class="event-header" onclick="toggleCollapse(this, event)">
+      <span class="chevron">▸</span>
       <h2>{{ evt.name }}</h2>
       <span class="slug">{{ evt.slug }}/</span>
+      {% if clips and clips[0].recorded_at %}<span class="ev-date">{{ clips[0].recorded_at[:10] }}</span>{% endif %}
       <span class="count">{{ clips | length }} clip{{ 's' if clips | length != 1 }}</span>
-      <form class="rename-form" method="post" action="/events/{{ evt.id }}/rename">
+      <form class="rename-form" method="post" action="/events/{{ evt.id }}/rename" onclick="event.stopPropagation()">
         <input name="name" value="{{ evt.name }}" required autocomplete="off">
         <button type="submit">Rename</button>
       </form>
     </div>
+    <div class="event-body">
 
     {% if not clips %}
       <p class="empty-event">No clips assigned yet.</p>
@@ -218,6 +250,7 @@ body.select-mode .play-btn { display: none; }
         </form>
       </div>
     {% endif %}
+    </div><!-- event-body -->
   </div>
   {% endfor %}
 
@@ -240,6 +273,13 @@ body.select-mode .play-btn { display: none; }
 </div>
 
 <script>
+// Collapse / expand an event (collapsed by default). Ignore clicks on the
+// rename form so editing the name doesn't toggle the section.
+function toggleCollapse(header, e) {
+  if (e.target.closest('.rename-form')) return;
+  header.closest('.event-block').classList.toggle('collapsed');
+}
+
 // Selection is per event (each event unassigns its own clips), but "select mode"
 // is global — matching the Unsorted view: once anything is ticked, play buttons
 // hide and a click anywhere on a card toggles selection.

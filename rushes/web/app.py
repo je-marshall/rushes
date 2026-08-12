@@ -167,6 +167,14 @@ async def events_list(request: Request):
         """, (evt["id"],)).fetchall()
         event_data.append({"event": evt, "clips": _enrich_clips(clips)})
 
+    # Order events by their most recent clip (clips are already recorded_at DESC,
+    # so clips[0] is the newest). Events with dated footage first (newest at top);
+    # undated/empty events fall to the bottom.
+    def _recency(ed):
+        top = ed["clips"][0]["recorded_at"] if ed["clips"] else None
+        return (top is not None, top or "")
+    event_data.sort(key=_recency, reverse=True)
+
     return _templates.TemplateResponse(request, "events.html", {
         "event_data": event_data,
     })
