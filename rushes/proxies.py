@@ -31,6 +31,20 @@ def _probe(path: Path) -> tuple[str | None, int | None]:
         return None, None
 
 
+def _gen_thumb(src: Path, name: str) -> Path | None:
+    """Grab a 640px thumbnail from src, named by `name` (the checksum)."""
+    dest = config.THUMB_DIR / f"{name}.jpg"
+    try:
+        r = subprocess.run(
+            ["ffmpeg", "-y", "-ss", "1", "-i", str(src),
+             "-frames:v", "1", "-vf", "scale=640:-1", str(dest)],
+            capture_output=True, timeout=60,
+        )
+        return dest if (r.returncode == 0 and dest.exists()) else None
+    except Exception:
+        return None
+
+
 def _transcode_h264(src: Path, dest: Path) -> bool:
     """Transcode src to an H.264 mp4 at dest (capped at 720p). Atomic via .part."""
     _, height = _probe(src)
@@ -57,37 +71,57 @@ def _transcode_h264(src: Path, dest: Path) -> bool:
         return False
 
 
-def process_batch(probe_limit: int = 150, max_transcodes: int = 1) -> tuple[int, int]:
-    """One pass: cheaply confirm H.264 proxies (up to probe_limit), and transcode
-    up to max_transcodes that aren't playable. Returns (marked_ok, transcoded)."""
+def process_batch(probe_limit: int = 150, max_transcodes: int = 1,
+                  max_thumbs: int = 25) -> tuple[int, int]:
+    """One pass over clips whose proxy or thumbnail isn't confirmed good:
+    - regenerate legacy/colliding thumbnails keyed by checksum (up to max_thumbs)
+    - transcode non-H.264 proxies (up to max_transcodes)
+    Cheap confirmations (already-good) are unlimited. Returns (transcoded, thumbs)."""
     conn = db.connect()
     rows = conn.execute(
-        "SELECT id, ingest_path, proxy_path, checksum FROM clips "
-        "WHERE proxy_ok IS NULL LIMIT ?", (probe_limit,)
+        "SELECT id, ingest_path, proxy_path, thumbnail_path, checksum, proxy_ok, thumb_ok "
+        "FROM clips WHERE proxy_ok IS NULL OR thumb_ok IS NULL LIMIT ?", (probe_limit,)
     ).fetchall()
 
-    marked = transcoded = 0
+    transcoded = thumbs_fixed = 0
     for r in rows:
-        proxy = r["proxy_path"]
-        if proxy and Path(proxy).exists() and _probe(Path(proxy))[0] == "h264":
-            conn.execute("UPDATE clips SET proxy_ok = 1 WHERE id = ?", (r["id"],))
-            marked += 1
-            continue
+        cs = r["checksum"]
 
-        # Needs a real H.264 proxy. Prefer the small .LRV proxy as source (cheap);
-        # fall back to the original if there's no proxy at all.
-        if transcoded >= max_transcodes:
-            continue  # leave for the next sweep
-        src = Path(proxy) if (proxy and Path(proxy).exists()) else Path(r["ingest_path"])
-        if not src.exists():
-            conn.execute("UPDATE clips SET proxy_ok = 0 WHERE id = ?", (r["id"],))
-            continue
-        dest = config.PROXY_DIR / f"{r['checksum']}.mp4"
-        if _transcode_h264(src, dest):
-            conn.execute("UPDATE clips SET proxy_path = ?, proxy_ok = 1 WHERE id = ?",
-                         (str(dest), r["id"]))
-            transcoded += 1
-        else:
-            conn.execute("UPDATE clips SET proxy_ok = 0 WHERE id = ?", (r["id"],))
+        # --- thumbnail: must be keyed by checksum (unique per clip) ---
+        if r["thumb_ok"] is None:
+            tp = r["thumbnail_path"]
+            if tp and Path(tp).name == f"{cs}.jpg" and Path(tp).exists():
+                conn.execute("UPDATE clips SET thumb_ok = 1 WHERE id = ?", (r["id"],))
+            elif thumbs_fixed < max_thumbs:
+                src = (Path(r["proxy_path"]) if r["proxy_path"] and Path(r["proxy_path"]).exists()
+                       else Path(r["ingest_path"]))
+                thumb = _gen_thumb(src, cs) if src.exists() else None
+                if thumb:
+                    conn.execute("UPDATE clips SET thumbnail_path = ?, thumb_ok = 1 WHERE id = ?",
+                                 (str(thumb), r["id"]))
+                    thumbs_fixed += 1
+                else:
+                    conn.execute("UPDATE clips SET thumb_ok = 0 WHERE id = ?", (r["id"],))
+            # else: leave NULL for the next sweep
+
+        # --- proxy: must be browser-playable H.264 ---
+        if r["proxy_ok"] is None:
+            proxy = r["proxy_path"]
+            if proxy and Path(proxy).exists() and _probe(Path(proxy))[0] == "h264":
+                conn.execute("UPDATE clips SET proxy_ok = 1 WHERE id = ?", (r["id"],))
+            elif transcoded < max_transcodes:
+                src = (Path(proxy) if proxy and Path(proxy).exists()
+                       else Path(r["ingest_path"]))
+                if not src.exists():
+                    conn.execute("UPDATE clips SET proxy_ok = 0 WHERE id = ?", (r["id"],))
+                else:
+                    dest = config.PROXY_DIR / f"{cs}.mp4"
+                    if _transcode_h264(src, dest):
+                        conn.execute("UPDATE clips SET proxy_path = ?, proxy_ok = 1 WHERE id = ?",
+                                     (str(dest), r["id"]))
+                        transcoded += 1
+                    else:
+                        conn.execute("UPDATE clips SET proxy_ok = 0 WHERE id = ?", (r["id"],))
+            # else: leave NULL for the next sweep
     conn.commit()
-    return marked, transcoded
+    return transcoded, thumbs_fixed

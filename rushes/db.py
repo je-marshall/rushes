@@ -83,4 +83,9 @@ def init_db(conn: sqlite3.Connection) -> None:
         # 1 = ready, 0 = couldn't be made). GoPro .LRV is sometimes HEVC, which a
         # browser can't play, so those get re-transcoded to H.264.
         conn.execute("ALTER TABLE clips ADD COLUMN proxy_ok INTEGER")
+    if "thumb_ok" not in cols:
+        # Whether the thumbnail is confirmed to be keyed by checksum (unique per
+        # clip). Legacy thumbnails were named by filename stem, so same-named
+        # clips from different cameras collided; those get regenerated.
+        conn.execute("ALTER TABLE clips ADD COLUMN thumb_ok INTEGER")
     conn.commit()

@@ -174,11 +174,13 @@ async def _proxy_loop() -> None:
     """Keep every clip's browser proxy as playable H.264 (re-transcode HEVC .LRVs)."""
     while True:
         try:
-            marked, transcoded = await asyncio.to_thread(proxies.process_batch)
+            transcoded, thumbs = await asyncio.to_thread(proxies.process_batch)
             if transcoded:
                 log.info("browser proxy: transcoded %d clip(s) to H.264", transcoded)
+            if thumbs:
+                log.info("thumbnails: regenerated %d (checksum-keyed)", thumbs)
         except Exception as exc:
-            log.warning("proxy sweep error: %r", exc)
+            log.warning("media sweep error: %r", exc)
         await asyncio.sleep(PROXY_SECS)
 
 
