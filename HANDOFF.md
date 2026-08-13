@@ -52,7 +52,34 @@ Alternative (guard): have the daemon mark a camera "ingesting" (a column on
 that camera is busy. More moving parts than the serial-keyed approach.
 
 
-### 1. Jellyfin libraries (last piece of the original vision)
+### 1. Jellyfin — CODE DONE, needs wiring on the server
+Built + committed: modern auth header (`Authorization: MediaBrowser Token`),
+rescan on every footage change (event ops + live ingest + import; daemon has the
+creds now), and two-way favourites sync (union: favourite anywhere shows
+everywhere; un-favourite not propagated) via a periodic task in rushes-watch.
+Config: JELLYFIN_URL / JELLYFIN_TOKEN / JELLYFIN_USER; installer flags
+`--jellyfin-url/--jellyfin-token/--jellyfin-user`.
+
+To turn on (server side):
+- Mount the ZFS dataset into Jellyfin at the SAME path (/data) so favourite
+  path-matching works; give Jellyfin's uid read ACL on the dataset.
+- Point JELLYFIN_URL at the INTERNAL address (http://host:8096), not the public
+  HTTPS domain (avoids the reverse-proxy layer).
+- Create 2 libraries → /data/footage/{unsorted,events}, enable real-time
+  monitoring as a backstop.
+- API key (Dashboard → API Keys); JELLYFIN_USER = the username you favourite from
+  on the TV. Re-run install-container.sh with the three --jellyfin-* flags.
+
+Deferred (user chose "skip NFO for now"): friendly titles + recorded dates on the
+TV via .nfo sidecars. Research verdict: Home Videos NFO support is flaky
+(source says yes, docs silent) — the RELIABLE route is a **Movies-type** library
+with NFO reader on + online fetchers off. NFO = `<clip>.nfo`, root `<movie>`,
+`<title>` + `<premiered>YYYY-MM-DD</premiered>` (drives date-sort) + `<plot>`;
+poster `<clip>-poster.jpg` (use our thumbnail). Would need writing/moving the
+sidecar alongside each MP4 (incl. on event assign/rename). recorded_at already
+in the DB to populate `<premiered>`.
+
+### (original) Jellyfin libraries note
 - Add two "Home Videos" libraries pointing at `/data/footage/unsorted` and
   `/data/footage/events` (Jellyfin must have `/data` mounted too, or share the
   dataset).
@@ -88,6 +115,20 @@ As clips ingest, the Unsorted grid should update without a manual refresh.
   the DB and pushes new-clip events; nicer UX, a bit more plumbing.
 - Recommend starting with polling — trivial and robust. New clips appear as
   cards fade in; count in the header updates.
+
+### 2d. Surface favourites / sort favourites-first (NEW)
+Once favouriting is in regular use, make the good stuff easy to find. Design fork
+(interacts with the month-section grouping):
+- (a) Pin a "★ Favourites" section at the very top of the grid (all favourites,
+  newest first), month sections below. Prominent; risks a clip appearing twice
+  unless excluded from its month.
+- (b) Within each month section, bubble favourites to the top. No dupes, keeps
+  chronology, less prominent.
+- (c) A "★ first" toggle that switches between normal month view and a flat
+  favourites-first ordering.
+Recommend (a) with favourites excluded from their month section (each clip once),
+or (b) if keeping strict chronology matters. Applies to Unsorted (and maybe
+Events). Data is there (clips.is_favourite).
 
 ### 3. Per-camera toggle on the Unsorted page (NEW)
 - Add a camera filter to the `/` route: `camera_id: int | None`. The `clips`
