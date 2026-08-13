@@ -116,6 +116,11 @@ ENV_LINES+=$'\n'"Environment=RUSHES_PASSWORD=$AUTH_PASSWORD"
 [[ -n "$JELLYFIN_URL"   ]] && ENV_LINES+=$'\n'"Environment=JELLYFIN_URL=$JELLYFIN_URL"
 [[ -n "$JELLYFIN_TOKEN" ]] && ENV_LINES+=$'\n'"Environment=JELLYFIN_TOKEN=$JELLYFIN_TOKEN"
 
+# The daemon triggers rescans too, so it needs the Jellyfin creds as well.
+JELLYFIN_LINES=""
+[[ -n "$JELLYFIN_URL"   ]] && JELLYFIN_LINES+=$'\n'"Environment=JELLYFIN_URL=$JELLYFIN_URL"
+[[ -n "$JELLYFIN_TOKEN" ]] && JELLYFIN_LINES+=$'\n'"Environment=JELLYFIN_TOKEN=$JELLYFIN_TOKEN"
+
 cat > /etc/systemd/system/rushes-web.service <<EOF
 [Unit]
 Description=Rushes web UI
@@ -145,7 +150,7 @@ ExecStart=$VENV/bin/rushes-watch
 Restart=always
 RestartSec=5
 Environment=PYTHONUNBUFFERED=1
-Environment=RUSHES_DATA=$RUSHES_DATA
+Environment=RUSHES_DATA=$RUSHES_DATA$JELLYFIN_LINES
 
 [Install]
 WantedBy=multi-user.target
