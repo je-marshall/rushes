@@ -78,4 +78,9 @@ def init_db(conn: sqlite3.Connection) -> None:
         # Last favourite state we reconciled with Jellyfin (NULL = never), used
         # to detect which side changed for two-way sync.
         conn.execute("ALTER TABLE clips ADD COLUMN jf_synced_fav INTEGER")
+    if "proxy_ok" not in cols:
+        # Whether the proxy is confirmed browser-playable H.264 (NULL = unchecked,
+        # 1 = ready, 0 = couldn't be made). GoPro .LRV is sometimes HEVC, which a
+        # browser can't play, so those get re-transcoded to H.264.
+        conn.execute("ALTER TABLE clips ADD COLUMN proxy_ok INTEGER")
     conn.commit()

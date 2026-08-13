@@ -24,7 +24,7 @@ from pathlib import Path
 
 import httpx
 
-from . import db, gopro, importer, ingest, jellyfin, netsetup
+from . import db, gopro, importer, ingest, jellyfin, netsetup, proxies
 
 log = logging.getLogger("rushes.watch")
 
@@ -35,6 +35,7 @@ POLL_SECS        = 3     # how often to scan for new interfaces
 READY_TIMEOUT    = 30    # seconds to wait for the camera API to come up per cycle
 RESCAN_SECS      = 120   # while connected, re-check for new clips this often
 FAVSYNC_SECS     = 120   # how often to sync favourites with Jellyfin
+PROXY_SECS       = 10    # how often to check for proxies needing an H.264 transcode
 BACKOFF_START    = 3
 BACKOFF_MAX      = 60
 
@@ -169,11 +170,24 @@ async def _favourites_loop() -> None:
             log.warning("favourites sync error: %r", exc)
 
 
+async def _proxy_loop() -> None:
+    """Keep every clip's browser proxy as playable H.264 (re-transcode HEVC .LRVs)."""
+    while True:
+        try:
+            marked, transcoded = await asyncio.to_thread(proxies.process_batch)
+            if transcoded:
+                log.info("browser proxy: transcoded %d clip(s) to H.264", transcoded)
+        except Exception as exc:
+            log.warning("proxy sweep error: %r", exc)
+        await asyncio.sleep(PROXY_SECS)
+
+
 async def _main_loop() -> None:
     log.info("rushes-watch started — watching for GoPro interfaces + import jobs")
     loopconn = db.connect()
     db.init_db(loopconn)
     asyncio.create_task(_favourites_loop())
+    asyncio.create_task(_proxy_loop())
 
     # A restart mid-import leaves jobs stuck. Honour an in-flight cancel; requeue
     # a job that was merely interrupted (re-running is idempotent, so it resumes).
