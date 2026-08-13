@@ -10,7 +10,7 @@ import logging
 
 import httpx
 
-from . import config, db
+from . import config, db, settings
 
 log = logging.getLogger("rushes.jellyfin")
 
@@ -49,9 +49,10 @@ def sync_favourites() -> tuple[int, int]:
     favouriting a clip in either Rushes or Jellyfin marks it favourite in both.
     Un-favouriting is NOT propagated (do it in the place you set it).
 
-    Matching is by file path (Jellyfin exposes no path lookup, so we enumerate
-    its items and match on `Path`) — this relies on Jellyfin seeing the footage
-    at the same path as Rushes; basename is a fallback. Returns (pulled, pushed).
+    Jellyfin exposes no path lookup, so we enumerate its items and match on the
+    path *below the footage root* (e.g. "unsorted/hero10/GX010001.MP4"). That
+    makes it prefix-agnostic — Rushes can have it at /data/footage and Jellyfin
+    at /media/gopro; only the tail has to line up. Returns (pulled, pushed).
     """
     if not _configured() or not config.JELLYFIN_USER:
         return (0, 0)
@@ -71,21 +72,38 @@ def sync_favourites() -> tuple[int, int]:
             )
             r.raise_for_status()
 
-            by_path, by_base = {}, {}
+            # Index Jellyfin items by basename; each clip then matches the
+            # candidate whose path ends with the clip's path below the footage
+            # root (prefix-agnostic), falling back to a unique basename.
+            by_base: dict[str, list] = {}
             for it in r.json().get("Items", []):
-                path = it.get("Path")
+                path = (it.get("Path") or "").replace("\\", "/")
                 if not path:
                     continue
-                rec = {"id": it.get("Id"),
-                       "fav": bool((it.get("UserData") or {}).get("IsFavorite"))}
-                by_path[path] = rec
-                by_base.setdefault(path.rsplit("/", 1)[-1], rec)
+                by_base.setdefault(path.rsplit("/", 1)[-1], []).append({
+                    "id": it.get("Id"),
+                    "fav": bool((it.get("UserData") or {}).get("IsFavorite")),
+                    "path": path,
+                })
 
-            conn  = db.connect()
+            conn         = db.connect()
+            footage_root = str(settings.footage_dir(conn)).replace("\\", "/").rstrip("/")
+
+            def _match(ingest_path: str):
+                p    = ingest_path.replace("\\", "/")
+                base = p.rsplit("/", 1)[-1]
+                cands = by_base.get(base, [])
+                if not cands:
+                    return None
+                rel = p[len(footage_root):].lstrip("/") if p.startswith(footage_root) else base
+                for c in cands:
+                    if c["path"].endswith(rel):
+                        return c
+                return cands[0] if len(cands) == 1 else None
+
             clips = conn.execute("SELECT id, ingest_path, is_favourite FROM clips").fetchall()
             for clip in clips:
-                path = clip["ingest_path"]
-                it   = by_path.get(path) or by_base.get(path.rsplit("/", 1)[-1])
+                it = _match(clip["ingest_path"])
                 if not it:
                     continue
                 if it["fav"] and not clip["is_favourite"]:

@@ -61,8 +61,10 @@ Config: JELLYFIN_URL / JELLYFIN_TOKEN / JELLYFIN_USER; installer flags
 `--jellyfin-url/--jellyfin-token/--jellyfin-user`.
 
 To turn on (server side):
-- Mount the ZFS dataset into Jellyfin at the SAME path (/data) so favourite
-  path-matching works; give Jellyfin's uid read ACL on the dataset.
+- Mount the ZFS dataset into Jellyfin ANYWHERE (path need not match Rushes —
+  favourites match on the path tail below the footage root, e.g. Rushes
+  /data/footage vs Jellyfin /media/gopro both work); give Jellyfin's uid read
+  ACL on the dataset.
 - Point JELLYFIN_URL at the INTERNAL address (http://host:8096), not the public
   HTTPS domain (avoids the reverse-proxy layer).
 - Create 2 libraries → /data/footage/{unsorted,events}, enable real-time
