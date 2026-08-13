@@ -71,12 +71,21 @@ def _transcode_h264(src: Path, dest: Path) -> bool:
         return False
 
 
+def pending() -> tuple[int, int]:
+    """(proxies unchecked, thumbnails unchecked) — for startup visibility."""
+    conn = db.connect()
+    p = conn.execute("SELECT COUNT(*) FROM clips WHERE proxy_ok IS NULL").fetchone()[0]
+    t = conn.execute("SELECT COUNT(*) FROM clips WHERE thumb_ok IS NULL").fetchone()[0]
+    return p, t
+
+
 def process_batch(probe_limit: int = 150, max_transcodes: int = 1,
-                  max_thumbs: int = 25) -> tuple[int, int]:
+                  max_thumbs: int = 25) -> tuple[int, int, int, int]:
     """One pass over clips whose proxy or thumbnail isn't confirmed good:
     - regenerate legacy/colliding thumbnails keyed by checksum (up to max_thumbs)
     - transcode non-H.264 proxies (up to max_transcodes)
-    Cheap confirmations (already-good) are unlimited. Returns (transcoded, thumbs)."""
+    Cheap confirmations (already-good) are unlimited.
+    Returns (checked, thumbs_fixed, transcoded, remaining)."""
     conn = db.connect()
     rows = conn.execute(
         "SELECT id, ingest_path, proxy_path, thumbnail_path, checksum, proxy_ok, thumb_ok "
@@ -124,4 +133,7 @@ def process_batch(probe_limit: int = 150, max_transcodes: int = 1,
                         conn.execute("UPDATE clips SET proxy_ok = 0 WHERE id = ?", (r["id"],))
             # else: leave NULL for the next sweep
     conn.commit()
-    return transcoded, thumbs_fixed
+    remaining = conn.execute(
+        "SELECT COUNT(*) FROM clips WHERE proxy_ok IS NULL OR thumb_ok IS NULL"
+    ).fetchone()[0]
+    return len(rows), thumbs_fixed, transcoded, remaining

@@ -171,14 +171,25 @@ async def _favourites_loop() -> None:
 
 
 async def _proxy_loop() -> None:
-    """Keep every clip's browser proxy as playable H.264 (re-transcode HEVC .LRVs)."""
+    """Keep proxies playable H.264 and thumbnails checksum-keyed (unique)."""
+    try:
+        p, t = await asyncio.to_thread(proxies.pending)
+        log.info("media sweep: starting — %d proxies + %d thumbnails to check", p, t)
+    except Exception as exc:
+        log.warning("media sweep: could not read pending counts: %r", exc)
+
+    done_logged = False
     while True:
         try:
-            transcoded, thumbs = await asyncio.to_thread(proxies.process_batch)
-            if transcoded:
-                log.info("browser proxy: transcoded %d clip(s) to H.264", transcoded)
-            if thumbs:
-                log.info("thumbnails: regenerated %d (checksum-keyed)", thumbs)
+            checked, thumbs, transcoded, remaining = await asyncio.to_thread(proxies.process_batch)
+            if checked:
+                log.info("media sweep: checked %d (+%d thumbnails, +%d proxies) — %d remaining",
+                         checked, thumbs, transcoded, remaining)
+            if remaining == 0 and not done_logged:
+                log.info("media sweep: complete — all clips have unique thumbnails + H.264 proxies")
+                done_logged = True
+            elif remaining:
+                done_logged = False
         except Exception as exc:
             log.warning("media sweep error: %r", exc)
         await asyncio.sleep(PROXY_SECS)
