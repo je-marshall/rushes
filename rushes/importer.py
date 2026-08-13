@@ -17,7 +17,7 @@ import shutil
 from datetime import datetime
 from pathlib import Path
 
-from . import cameras, db, gopro, ingest, metadata, recorded, settings, thumbs
+from . import cameras, db, gopro, ingest, jellyfin, metadata, recorded, settings, thumbs
 
 VIDEO_EXTS = {".mp4"}
 
@@ -232,6 +232,8 @@ async def run_job(conn, job) -> None:
             (status, summary + (" (cancelled)" if cancelled else ""), now(), job_id),
         )
         conn.commit()
+        if imported:  # new footage copied into the library → tell Jellyfin
+            await asyncio.to_thread(jellyfin.trigger_rescan)
     except Exception as exc:
         conn.execute(
             "UPDATE import_jobs SET status='error', message=?, updated_at=? WHERE id=?",

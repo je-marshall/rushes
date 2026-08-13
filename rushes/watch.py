@@ -24,7 +24,7 @@ from pathlib import Path
 
 import httpx
 
-from . import db, gopro, importer, ingest, netsetup
+from . import db, gopro, importer, ingest, jellyfin, netsetup
 
 log = logging.getLogger("rushes.watch")
 
@@ -133,6 +133,8 @@ async def _handle(iface: str) -> None:
                         if pulled or updated or first:
                             log.info("%s: %d new, %d updated, %d on camera", serial, pulled, updated, found)
                         first = False
+                        if pulled:  # new footage landed → tell Jellyfin
+                            await asyncio.to_thread(jellyfin.trigger_rescan)
                     except httpx.HTTPError as exc:
                         log.warning("%s: media sync failed (%s) — ending cycle", serial, exc)
                         break  # camera dropped; rediscovery will bring it back

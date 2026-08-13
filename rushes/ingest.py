@@ -8,7 +8,7 @@ from pathlib import Path
 
 import httpx
 
-from . import cameras, config, db, gopro, netsetup, recorded, settings, thumbs
+from . import cameras, config, db, gopro, jellyfin, netsetup, recorded, settings, thumbs
 
 
 def finalize_clip(conn, camera_row, dest: Path, size: int, checksum: str,
@@ -244,6 +244,8 @@ async def run(interface: str | None = None, serial_hint: str | None = None) -> N
             try:
                 found, pulled, updated = await pull_all(conn, client, serial, model, on_progress=_progress)
                 print(f"Ingest complete: {model} ({serial}) — {pulled} new / {updated} updated / {found} on camera", flush=True)
+                if pulled:
+                    jellyfin.trigger_rescan()
             finally:
                 keeper.cancel()
 
