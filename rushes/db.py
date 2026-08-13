@@ -70,8 +70,12 @@ def init_db(conn: sqlite3.Connection) -> None:
             updated_at  TEXT
         );
     """)
-    # Migration: add proxy_path to a pre-existing clips table.
+    # Migrations for pre-existing clips tables.
     cols = [r[1] for r in conn.execute("PRAGMA table_info(clips)")]
     if "proxy_path" not in cols:
         conn.execute("ALTER TABLE clips ADD COLUMN proxy_path TEXT")
+    if "jf_synced_fav" not in cols:
+        # Last favourite state we reconciled with Jellyfin (NULL = never), used
+        # to detect which side changed for two-way sync.
+        conn.execute("ALTER TABLE clips ADD COLUMN jf_synced_fav INTEGER")
     conn.commit()

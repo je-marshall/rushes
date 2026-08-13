@@ -164,7 +164,7 @@ async def _favourites_loop() -> None:
         try:
             pulled, pushed = await asyncio.to_thread(jellyfin.sync_favourites)
             if pulled or pushed:
-                log.info("favourites: %d pulled from TV, %d pushed to TV", pulled, pushed)
+                log.info("favourites synced: %d updated in Rushes, %d in Jellyfin", pulled, pushed)
         except Exception as exc:
             log.warning("favourites sync error: %r", exc)
 

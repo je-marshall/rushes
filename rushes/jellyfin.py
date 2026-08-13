@@ -34,6 +34,25 @@ def trigger_rescan() -> None:
         pass  # Jellyfin being down must not affect anything else
 
 
+def _reconcile(R: bool, J: bool, S) -> tuple[bool, bool, bool]:
+    """Decide favourite targets from Rushes-now (R), Jellyfin-now (J) and the
+    last-synced state (S; None = never). Returns (rushes_target, jellyfin_target,
+    new_synced_state). First sight → union; otherwise the side that changed wins
+    (Rushes on the — with booleans, only apparent — tie)."""
+    if S is None:
+        v = R or J
+        return v, v, v
+    S = bool(S)
+    r_changed, j_changed = (R != S), (J != S)
+    if r_changed and not j_changed:
+        return R, R, R
+    if j_changed and not r_changed:
+        return J, J, J
+    if r_changed and j_changed:      # both moved (to the same value, for booleans)
+        return R, R, R
+    return R, J, S                    # neither changed
+
+
 def _resolve_user_id(client: httpx.Client, name: str) -> str | None:
     r = client.get(f"{config.JELLYFIN_URL}/Users", headers=_headers())
     r.raise_for_status()
@@ -45,14 +64,17 @@ def _resolve_user_id(client: httpx.Client, name: str) -> str | None:
 
 def sync_favourites() -> tuple[int, int]:
     """
-    Two-way *union* sync of favourites with the configured Jellyfin user:
-    favouriting a clip in either Rushes or Jellyfin marks it favourite in both.
-    Un-favouriting is NOT propagated (do it in the place you set it).
-
-    Jellyfin exposes no path lookup, so we enumerate its items and match on the
-    path *below the footage root* (e.g. "unsorted/hero10/GX010001.MP4"). That
-    makes it prefix-agnostic — Rushes can have it at /data/footage and Jellyfin
-    at /media/gopro; only the tail has to line up. Returns (pulled, pushed).
+    True two-way favourites sync (incl. un-favourite) with the configured
+    Jellyfin user. We remember the last-synced state per clip (clips.jf_synced_fav)
+    so we can tell which side changed:
+      - only Rushes changed  → push that state to Jellyfin
+      - only Jellyfin changed → apply that state to Rushes
+      - both changed & differ → conflict, Rushes wins
+      - first time we see a clip (no snapshot) → union (favourite if either side
+        has it), so enabling the sync never surprise-unfavourites anything
+    Jellyfin exposes no path lookup, so we match on the path *below the footage
+    root* ("unsorted/hero10/GX010001.MP4") — prefix-agnostic (Rushes /data vs
+    Jellyfin /media/gopro both fine). Returns (rushes_updated, jellyfin_updated).
     """
     if not _configured() or not config.JELLYFIN_USER:
         return (0, 0)
@@ -101,22 +123,39 @@ def sync_favourites() -> tuple[int, int]:
                         return c
                 return cands[0] if len(cands) == 1 else None
 
-            clips = conn.execute("SELECT id, ingest_path, is_favourite FROM clips").fetchall()
+            def _set_fav(item_id: str, fav: bool) -> bool:
+                try:
+                    url = f"{config.JELLYFIN_URL}/UserFavoriteItems/{item_id}"
+                    resp = (client.post if fav else client.delete)(
+                        url, headers=_headers(), params={"userId": uid})
+                    return resp.status_code < 400
+                except Exception:
+                    return False
+
+            dirty = False
+            clips = conn.execute(
+                "SELECT id, ingest_path, is_favourite, jf_synced_fav FROM clips"
+            ).fetchall()
             for clip in clips:
                 it = _match(clip["ingest_path"])
                 if not it:
                     continue
-                if it["fav"] and not clip["is_favourite"]:
-                    conn.execute("UPDATE clips SET is_favourite = 1 WHERE id = ?", (clip["id"],))
-                    pulled += 1
-                elif clip["is_favourite"] and not it["fav"] and it["id"]:
-                    resp = client.post(
-                        f"{config.JELLYFIN_URL}/UserFavoriteItems/{it['id']}",
-                        headers=_headers(), params={"userId": uid},
-                    )
-                    if resp.status_code < 400:
-                        pushed += 1
-            if pulled:
+                R = bool(clip["is_favourite"])   # Rushes now
+                J = bool(it["fav"])              # Jellyfin now
+                r_t, j_t, new_s = _reconcile(R, J, clip["jf_synced_fav"])
+
+                if r_t != R:
+                    conn.execute("UPDATE clips SET is_favourite = ? WHERE id = ?",
+                                 (int(r_t), clip["id"]))
+                    pulled += 1; dirty = True
+                if j_t != J and it["id"] and _set_fav(it["id"], j_t):
+                    pushed += 1
+                new_int = int(new_s)
+                if clip["jf_synced_fav"] is None or clip["jf_synced_fav"] != new_int:
+                    conn.execute("UPDATE clips SET jf_synced_fav = ? WHERE id = ?",
+                                 (new_int, clip["id"]))
+                    dirty = True
+            if dirty:
                 conn.commit()
     except Exception as exc:
         log.warning("favourites sync failed: %s", exc)
