@@ -17,6 +17,7 @@ RUSHES_DATA="${RUSHES_DATA:-/var/lib/rushes}"
 VENV="/opt/rushes-venv"
 JELLYFIN_URL="${JELLYFIN_URL:-}"
 JELLYFIN_TOKEN="${JELLYFIN_TOKEN:-}"
+JELLYFIN_USER="${JELLYFIN_USER:-}"
 AUTH_USERNAME="${RUSHES_USERNAME:-rushes}"
 AUTH_PASSWORD="${RUSHES_PASSWORD:-}"
 SECRET_KEY="${RUSHES_SECRET_KEY:-}"
@@ -28,6 +29,7 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --jellyfin-url)    JELLYFIN_URL="$2";   shift 2 ;;
         --jellyfin-token)  JELLYFIN_TOKEN="$2"; shift 2 ;;
+        --jellyfin-user)   JELLYFIN_USER="$2";  shift 2 ;;
         --data-dir)        RUSHES_DATA="$2";    shift 2 ;;
         --username)        AUTH_USERNAME="$2";  shift 2 ;;
         --password)        AUTH_PASSWORD="$2";  shift 2 ;;
@@ -115,11 +117,13 @@ ENV_LINES+=$'\n'"Environment=RUSHES_USERNAME=$AUTH_USERNAME"
 ENV_LINES+=$'\n'"Environment=RUSHES_PASSWORD=$AUTH_PASSWORD"
 [[ -n "$JELLYFIN_URL"   ]] && ENV_LINES+=$'\n'"Environment=JELLYFIN_URL=$JELLYFIN_URL"
 [[ -n "$JELLYFIN_TOKEN" ]] && ENV_LINES+=$'\n'"Environment=JELLYFIN_TOKEN=$JELLYFIN_TOKEN"
+[[ -n "$JELLYFIN_USER"  ]] && ENV_LINES+=$'\n'"Environment=JELLYFIN_USER=$JELLYFIN_USER"
 
-# The daemon triggers rescans too, so it needs the Jellyfin creds as well.
+# The daemon triggers rescans + syncs favourites, so it needs the creds too.
 JELLYFIN_LINES=""
 [[ -n "$JELLYFIN_URL"   ]] && JELLYFIN_LINES+=$'\n'"Environment=JELLYFIN_URL=$JELLYFIN_URL"
 [[ -n "$JELLYFIN_TOKEN" ]] && JELLYFIN_LINES+=$'\n'"Environment=JELLYFIN_TOKEN=$JELLYFIN_TOKEN"
+[[ -n "$JELLYFIN_USER"  ]] && JELLYFIN_LINES+=$'\n'"Environment=JELLYFIN_USER=$JELLYFIN_USER"
 
 cat > /etc/systemd/system/rushes-web.service <<EOF
 [Unit]

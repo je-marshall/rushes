@@ -16,6 +16,7 @@ DEFAULT_FOOTAGE_DIR = BASE_DIR / "footage"
 # API key: Jellyfin dashboard → Administration → API Keys → +
 JELLYFIN_URL   = os.environ.get("JELLYFIN_URL", "")    # e.g. http://localhost:8096
 JELLYFIN_TOKEN = os.environ.get("JELLYFIN_TOKEN", "")
+JELLYFIN_USER  = os.environ.get("JELLYFIN_USER", "")   # username whose TV favourites we sync
 
 # Auth — required when exposing the UI publicly.
 # Generate a secret key with: python3 -c "import secrets; print(secrets.token_hex(32))"

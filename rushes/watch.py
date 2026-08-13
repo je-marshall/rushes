@@ -34,6 +34,7 @@ IGNORE_INTERFACES = {"lo", "eth0"}
 POLL_SECS        = 3     # how often to scan for new interfaces
 READY_TIMEOUT    = 30    # seconds to wait for the camera API to come up per cycle
 RESCAN_SECS      = 120   # while connected, re-check for new clips this often
+FAVSYNC_SECS     = 120   # how often to sync favourites with Jellyfin
 BACKOFF_START    = 3
 BACKOFF_MAX      = 60
 
@@ -156,10 +157,23 @@ async def _run_import_job(job) -> None:
     log.info("import job %d finished", job["id"])
 
 
+async def _favourites_loop() -> None:
+    """Periodically reconcile favourites with Jellyfin (no-op unless configured)."""
+    while True:
+        await asyncio.sleep(FAVSYNC_SECS)
+        try:
+            pulled, pushed = await asyncio.to_thread(jellyfin.sync_favourites)
+            if pulled or pushed:
+                log.info("favourites: %d pulled from TV, %d pushed to TV", pulled, pushed)
+        except Exception as exc:
+            log.warning("favourites sync error: %r", exc)
+
+
 async def _main_loop() -> None:
     log.info("rushes-watch started — watching for GoPro interfaces + import jobs")
     loopconn = db.connect()
     db.init_db(loopconn)
+    asyncio.create_task(_favourites_loop())
 
     # A restart mid-import leaves jobs stuck. Honour an in-flight cancel; requeue
     # a job that was merely interrupted (re-running is idempotent, so it resumes).
