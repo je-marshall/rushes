@@ -9,6 +9,7 @@ BASE_DIR   = Path(os.environ.get("RUSHES_DATA", "/var/lib/rushes"))
 DB_PATH    = BASE_DIR / "rushes.db"
 THUMB_DIR  = BASE_DIR / "thumbs"
 PROXY_DIR  = BASE_DIR / "proxies"   # low-res .LRV proxies for browser playback
+RAW_DIR    = BASE_DIR / "raw"       # .GPR raw photos (download-only), checksum-keyed
 
 DEFAULT_FOOTAGE_DIR = BASE_DIR / "footage"
 
@@ -26,5 +27,5 @@ AUTH_PASSWORD = os.environ.get("RUSHES_PASSWORD", "")
 
 # Only the state dirs are created eagerly; footage dirs are created on demand by
 # settings.py once the (possibly user-edited) footage root is known.
-for _d in (BASE_DIR, THUMB_DIR, PROXY_DIR):
+for _d in (BASE_DIR, THUMB_DIR, PROXY_DIR, RAW_DIR):
     _d.mkdir(parents=True, exist_ok=True)

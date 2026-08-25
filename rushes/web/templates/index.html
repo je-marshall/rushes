@@ -99,6 +99,7 @@ body.select-mode .play-btn { display: none; }
 #player-close { background: none; border: none; color: #ccc; font-size: 1.4rem; cursor: pointer; line-height: 1; }
 #player-close:hover { color: #fff; }
 #player-video { width: min(90vw, 1600px); max-height: 80vh; background: #000; border-radius: 6px; display: block; }
+#player-image { max-width: min(92vw, 1800px); max-height: 82vh; border-radius: 6px; display: block; }
 #player-error { display: none; background: #1a1a1a; border: 1px solid #3a1518; color: #f0a0a8; padding: 1.5rem; border-radius: 6px; max-width: 30rem; text-align: center; font-size: 0.9rem; line-height: 1.6; }
 #player-error a { color: #aad4ff; }
 
@@ -161,10 +162,12 @@ body.select-mode .play-btn { display: none; }
     <div id="player-bar">
       <span id="player-title"></span>
       <span style="flex:1"></span>
+      <a id="player-raw" href="#" download style="display:none">Download RAW</a>
       <a id="player-download" href="#" download>Download</a>
       <button id="player-close" onclick="closePlayer()">✕</button>
     </div>
     <video id="player-video" controls playsinline></video>
+    <img id="player-image" alt="" style="display:none">
     <div id="player-error">
       This clip can’t be played in the browser — it’s most likely HEVC/H.265,
       which browsers don’t decode.<br>
@@ -210,10 +213,13 @@ function buildSequence(clips) {
 function createCard(c) {
   const d = document.createElement('div');
   d.className = 'clip'; d.dataset.id = c.id;
+  d.dataset.mediaType = c.media_type || 'video';
+  if (c.raw_url) d.dataset.raw = '1';
+  const isPhoto = c.media_type === 'photo';
   d.innerHTML = `
     <div class="thumb-wrap">
-      ${c.thumb_url ? `<img src="${c.thumb_url}" loading="lazy" alt="">` : `<div class="no-thumb">▶</div>`}
-      <button class="play-btn" title="Play">▶</button>
+      ${c.thumb_url ? `<img src="${c.thumb_url}" loading="lazy" alt="">` : `<div class="no-thumb">${isPhoto ? '🖼' : '▶'}</div>`}
+      <button class="play-btn" title="${isPhoto ? 'View' : 'Play'}">${isPhoto ? '⤢' : '▶'}</button>
       <div class="checkbox" title="Select"></div>
     </div>
     <div class="clip-info">
@@ -275,25 +281,38 @@ function updateBar() {
   bar.classList.toggle('visible', selected.size > 0);
 }
 
-// --- player ---
+// --- player (video + photo) ---
 const video = document.getElementById('player-video');
-function openPlayer(id, filename) {
-  const dl = `/clip/${id}/download`;
-  document.getElementById('player-title').textContent = filename || '';
-  document.getElementById('player-download').href = dl;
-  document.getElementById('player-error-dl').href = dl;
+const pimg  = document.getElementById('player-image');
+function openPlayer(card) {
+  const id = card.dataset.id;
+  const isPhoto = card.dataset.mediaType === 'photo';
+  document.getElementById('player-title').textContent = card.querySelector('.clip-name').textContent || '';
+  document.getElementById('player-download').href = `/clip/${id}/download`;
+  const rawLink = document.getElementById('player-raw');
+  if (card.dataset.raw) { rawLink.href = `/clip/${id}/raw`; rawLink.style.display = 'inline'; }
+  else { rawLink.style.display = 'none'; }
   document.getElementById('player-error').style.display = 'none';
-  video.style.display = 'block';
-  video.src = `/clip/${id}/video`;
+
+  if (isPhoto) {
+    video.pause(); video.removeAttribute('src'); video.load(); video.style.display = 'none';
+    pimg.src = `/clip/${id}/photo`; pimg.style.display = 'block';
+  } else {
+    pimg.removeAttribute('src'); pimg.style.display = 'none';
+    document.getElementById('player-error-dl').href = `/clip/${id}/download`;
+    video.style.display = 'block';
+    video.src = `/clip/${id}/video`;
+    video.play().catch(() => {});
+  }
   document.getElementById('player').classList.add('visible');
-  video.play().catch(() => {});
 }
 function closePlayer() {
   video.pause(); video.removeAttribute('src'); video.load();
+  pimg.removeAttribute('src');
   document.getElementById('player').classList.remove('visible');
 }
 video.addEventListener('error', () => {
-  // Codec/network failure — offer the download instead of a blank player.
+  if (video.style.display === 'none') return;   // showing a photo, not a video error
   video.style.display = 'none';
   document.getElementById('player-error').style.display = 'block';
 });
@@ -312,7 +331,7 @@ grid.addEventListener('click', async e => {
   if (flg) { const r = await fetch(`/clips/${id}/flag`, {method:'POST'}); if (r.ok) flg.classList.toggle('active'); return; }
 
   if (selectMode()) { toggleSelect(id); return; }
-  if (e.target.closest('.play-btn')) { openPlayer(id, card.querySelector('.clip-name').textContent); return; }
+  if (e.target.closest('.play-btn')) { openPlayer(card); return; }
   if (e.target.closest('.checkbox')) { toggleSelect(id); return; }
 });
 

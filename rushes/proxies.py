@@ -11,7 +11,7 @@ a GPU. Runs incrementally in the background from the watch daemon.
 import subprocess
 from pathlib import Path
 
-from . import config, db
+from . import config, db, thumbs
 
 
 def _probe(path: Path) -> tuple[str | None, int | None]:
@@ -88,13 +88,14 @@ def process_batch(probe_limit: int = 150, max_transcodes: int = 1,
     Returns (checked, thumbs_fixed, transcoded, remaining)."""
     conn = db.connect()
     rows = conn.execute(
-        "SELECT id, ingest_path, proxy_path, thumbnail_path, checksum, proxy_ok, thumb_ok "
+        "SELECT id, ingest_path, proxy_path, thumbnail_path, checksum, proxy_ok, thumb_ok, media_type "
         "FROM clips WHERE proxy_ok IS NULL OR thumb_ok IS NULL LIMIT ?", (probe_limit,)
     ).fetchall()
 
     transcoded = thumbs_fixed = 0
     for r in rows:
         cs = r["checksum"]
+        is_photo = r["media_type"] == "photo"
 
         # --- thumbnail: must be keyed by checksum (unique per clip) ---
         if r["thumb_ok"] is None:
@@ -102,9 +103,13 @@ def process_batch(probe_limit: int = 150, max_transcodes: int = 1,
             if tp and Path(tp).name == f"{cs}.jpg" and Path(tp).exists():
                 conn.execute("UPDATE clips SET thumb_ok = 1 WHERE id = ?", (r["id"],))
             elif thumbs_fixed < max_thumbs:
-                src = (Path(r["proxy_path"]) if r["proxy_path"] and Path(r["proxy_path"]).exists()
-                       else Path(r["ingest_path"]))
-                thumb = _gen_thumb(src, cs) if src.exists() else None
+                if is_photo:
+                    ip = Path(r["ingest_path"])
+                    thumb = thumbs.image_thumb(ip, cs) if ip.exists() else None
+                else:
+                    src = (Path(r["proxy_path"]) if r["proxy_path"] and Path(r["proxy_path"]).exists()
+                           else Path(r["ingest_path"]))
+                    thumb = _gen_thumb(src, cs) if src.exists() else None
                 if thumb:
                     conn.execute("UPDATE clips SET thumbnail_path = ?, thumb_ok = 1 WHERE id = ?",
                                  (str(thumb), r["id"]))
@@ -113,8 +118,11 @@ def process_batch(probe_limit: int = 150, max_transcodes: int = 1,
                     conn.execute("UPDATE clips SET thumb_ok = 0 WHERE id = ?", (r["id"],))
             # else: leave NULL for the next sweep
 
-        # --- proxy: must be browser-playable H.264 ---
+        # --- proxy: photos need none; videos must be browser-playable H.264 ---
         if r["proxy_ok"] is None:
+            if is_photo:
+                conn.execute("UPDATE clips SET proxy_ok = 1 WHERE id = ?", (r["id"],))
+                continue
             proxy = r["proxy_path"]
             if proxy and Path(proxy).exists() and _probe(Path(proxy))[0] == "h264":
                 conn.execute("UPDATE clips SET proxy_ok = 1 WHERE id = ?", (r["id"],))

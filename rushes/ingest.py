@@ -13,18 +13,19 @@ from . import cameras, config, db, gopro, jellyfin, netsetup, recorded, settings
 
 def finalize_clip(conn, camera_row, dest: Path, size: int, checksum: str,
                   recorded_at: str | None, thumb_path: Path | None,
-                  proxy_path: Path | None) -> None:
-    """Probe + DB insert for a file already at `dest`, with a resolved thumbnail
-    and optional proxy. Shared by live download and bulk import. Idempotent
-    (checksum and ingest_path are UNIQUE)."""
-    duration = _probe_duration(dest)
+                  proxy_path: Path | None, media_type: str = "video",
+                  raw_path: Path | None = None) -> None:
+    """Probe + DB insert for a file already at `dest`. Shared by live download
+    and bulk import; handles both video and photo media. Idempotent (checksum
+    and ingest_path are UNIQUE)."""
+    duration = _probe_duration(dest) if media_type == "video" else None
     conn.execute(
         """
         INSERT OR IGNORE INTO clips
             (filename, ingest_path, recorded_at, ingested_at, camera_id,
              camera_serial, camera_model, duration_secs, size_bytes, checksum,
-             thumbnail_path, proxy_path)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             thumbnail_path, proxy_path, media_type, raw_path)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             dest.name, str(dest), recorded_at, datetime.now().isoformat(),
@@ -32,6 +33,8 @@ def finalize_clip(conn, camera_row, dest: Path, size: int, checksum: str,
             duration, size, checksum,
             str(thumb_path) if thumb_path else None,
             str(proxy_path) if proxy_path else None,
+            media_type,
+            str(raw_path) if raw_path else None,
         ),
     )
     conn.commit()
@@ -101,6 +104,23 @@ async def _pull_file(
                 sha.update(chunk)
     os.replace(part, dest)
     checksum = sha.hexdigest()
+    recorded_at = recorded.pick(recorded.from_unix(mf.created))
+
+    # Photo: thumbnail from the image itself; pull the .GPR raw if present.
+    if mf.kind == "photo":
+        thumb_path = thumbs.image_thumb(dest, checksum)
+        raw_path = None
+        if mf.gpr_path:
+            gpr = config.RAW_DIR / f"{checksum}.gpr"
+            try:
+                await _download_to(client, mf.gpr_path, gpr)
+                raw_path = gpr
+            except Exception:
+                raw_path = None
+        finalize_clip(conn, camera_row, dest, mf.size, checksum, recorded_at,
+                      thumb_path, None, media_type="photo", raw_path=raw_path)
+        print(f"  done  {mf.filename} (photo)", flush=True)
+        return
 
     # Thumbnail: prefer the camera's own .THM (no decode); else extract a frame.
     thumb_path = None
@@ -124,7 +144,6 @@ async def _pull_file(
         except Exception:
             proxy_path = None
 
-    recorded_at = recorded.pick(recorded.from_unix(mf.created))
     finalize_clip(conn, camera_row, dest, mf.size, checksum, recorded_at, thumb_path, proxy_path)
     print(f"  done  {mf.filename}", flush=True)
 
@@ -187,9 +206,10 @@ async def pull_all(conn, client: httpx.AsyncClient, serial: str, model: str,
                 (camera_id, mf.filename),
             ).fetchone()
             if clip:
-                async with sem:
-                    if await _backfill_live(conn, client, mf, clip):
-                        updated += 1
+                if mf.kind == "video":   # photos have no proxy/thumbnail to backfill
+                    async with sem:
+                        if await _backfill_live(conn, client, mf, clip):
+                            updated += 1
                 return
             dest = _dest_for(mf)
             if dest.exists():

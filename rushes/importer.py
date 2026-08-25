@@ -17,15 +17,29 @@ import shutil
 from datetime import datetime
 from pathlib import Path
 
-from . import cameras, db, gopro, ingest, jellyfin, metadata, recorded, settings, thumbs
+from . import cameras, config, db, gopro, ingest, jellyfin, metadata, recorded, settings, thumbs
 
-VIDEO_EXTS = {".mp4"}
+PHOTO_EXTS = {".jpg", ".jpeg"}
+MEDIA_EXTS = {".mp4"} | PHOTO_EXTS   # .GPR raw is picked up as a photo's sibling
 
 
-def _iter_videos(source: Path):
+def _iter_media(source: Path):
     for p in sorted(source.rglob("*")):
-        if p.is_file() and p.suffix.lower() in VIDEO_EXTS and not p.name.endswith(".part"):
+        if p.is_file() and p.suffix.lower() in MEDIA_EXTS and not p.name.endswith(".part"):
             yield p
+
+
+def _is_photo(path: Path) -> bool:
+    return path.suffix.lower() in PHOTO_EXTS
+
+
+def _find_gpr(photo: Path) -> Path | None:
+    """The .GPR raw sibling of a photo shares its stem."""
+    for ext in (".GPR", ".gpr"):
+        cand = photo.with_suffix(ext)
+        if cand.exists():
+            return cand
+    return None
 
 
 def _find_aux(video: Path) -> tuple[Path | None, Path | None]:
@@ -54,12 +68,29 @@ def _sha256(path: Path) -> str:
 
 
 async def _backfill(conn, clip, source: Path) -> bool:
-    """For an already-imported clip, pull in any .LRV proxy / .THM thumbnail we
-    don't yet have, from the source file's siblings. Returns True if anything
-    was added. Never clobbers an existing proxy/thumbnail."""
-    thm, lrv = _find_aux(source)
+    """For an already-imported clip, pull in anything we're missing from the
+    source's siblings (never clobbering what's there). Returns True if changed."""
     checksum = clip["checksum"]
     changed  = False
+
+    if clip["media_type"] == "photo":
+        if not (clip["raw_path"] and Path(clip["raw_path"]).exists()):
+            gpr = _find_gpr(source)
+            if gpr:
+                rp = config.RAW_DIR / f"{checksum}.gpr"
+                await asyncio.to_thread(shutil.copy2, gpr, rp)
+                conn.execute("UPDATE clips SET raw_path = ? WHERE id = ?", (str(rp), clip["id"]))
+                changed = True
+        if not (clip["thumbnail_path"] and Path(clip["thumbnail_path"]).exists()):
+            t = thumbs.image_thumb(source, checksum)
+            if t:
+                conn.execute("UPDATE clips SET thumbnail_path = ? WHERE id = ?", (str(t), clip["id"]))
+                changed = True
+        if changed:
+            conn.commit()
+        return changed
+
+    thm, lrv = _find_aux(source)
 
     have_proxy = clip["proxy_path"] and Path(clip["proxy_path"]).exists()
     if not have_proxy and lrv:
@@ -103,16 +134,29 @@ async def import_file(conn, path: Path) -> str:
     await asyncio.to_thread(shutil.copy2, path, part)   # copy2 preserves mtime
     part.replace(dest)
 
-    # Use the card's own .THM / .LRV when present (no decode; playable proxy).
+    # Recording time only. If the file has no (plausible) recording date we leave
+    # it undated rather than guessing from mtime — see "fix timestamps" TODO.
+    recorded_at = recorded.pick(recorded.from_exif(meta.exif_date))
+
+    if _is_photo(path):
+        thumb_path = thumbs.image_thumb(dest, checksum)
+        raw_path = None
+        gpr = _find_gpr(path)
+        if gpr:
+            rp = config.RAW_DIR / f"{checksum}.gpr"
+            await asyncio.to_thread(shutil.copy2, gpr, rp)
+            raw_path = rp
+        ingest.finalize_clip(conn, camera, dest, dest.stat().st_size, checksum,
+                             recorded_at, thumb_path, None,
+                             media_type="photo", raw_path=raw_path)
+        return "imported"
+
+    # Video — use the card's own .THM / .LRV when present (no decode; proxy).
     thm, lrv = _find_aux(path)
     thumb_path = thumbs.save_image(thm, checksum) if thm else None
     if not thumb_path:
         thumb_path = await thumbs.generate(dest, checksum)
     proxy_path = thumbs.save_proxy(lrv, checksum) if lrv else None
-
-    # Recording time only. If the file has no (plausible) recording date we leave
-    # it undated rather than guessing from mtime — see "fix timestamps" TODO.
-    recorded_at = recorded.pick(recorded.from_exif(meta.exif_date))
     ingest.finalize_clip(conn, camera, dest, dest.stat().st_size, checksum,
                          recorded_at, thumb_path, proxy_path)
     return "imported"
@@ -120,7 +164,7 @@ async def import_file(conn, path: Path) -> str:
 
 async def run_import(conn, source: Path, on_progress=None,
                      is_cancelled=None) -> tuple[int, int, int, int, bool]:
-    files    = list(_iter_videos(source))
+    files    = list(_iter_media(source))
     total    = len(files)
     imported = skipped = updated = 0
     cancelled = False

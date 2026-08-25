@@ -45,7 +45,9 @@ def init_db(conn: sqlite3.Connection) -> None:
             is_favourite   INTEGER NOT NULL DEFAULT 0,
             flagged        INTEGER NOT NULL DEFAULT 0,
             thumbnail_path TEXT,
-            proxy_path     TEXT
+            proxy_path     TEXT,
+            media_type     TEXT NOT NULL DEFAULT 'video',
+            raw_path       TEXT
         );
 
         CREATE INDEX IF NOT EXISTS idx_clips_recorded ON clips(recorded_at);
@@ -88,4 +90,11 @@ def init_db(conn: sqlite3.Connection) -> None:
         # clip). Legacy thumbnails were named by filename stem, so same-named
         # clips from different cameras collided; those get regenerated.
         conn.execute("ALTER TABLE clips ADD COLUMN thumb_ok INTEGER")
+    if "media_type" not in cols:
+        # 'video' (default) or 'photo'. Photos share this table so they flow
+        # through cameras/events/shares, but have no proxy/duration.
+        conn.execute("ALTER TABLE clips ADD COLUMN media_type TEXT NOT NULL DEFAULT 'video'")
+    if "raw_path" not in cols:
+        # For a photo, the sibling .GPR raw (download-only), checksum-keyed.
+        conn.execute("ALTER TABLE clips ADD COLUMN raw_path TEXT")
     conn.commit()

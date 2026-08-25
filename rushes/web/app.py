@@ -103,7 +103,7 @@ async def clip_video(clip_id: int):
 
 @app.get("/clip/{clip_id}/download")
 async def clip_download(clip_id: int):
-    """Always the original, full-quality file."""
+    """Always the original, full-quality file (video or photo)."""
     conn = db.connect()
     row  = conn.execute("SELECT ingest_path, filename FROM clips WHERE id = ?", (clip_id,)).fetchone()
     if not row:
@@ -111,7 +111,28 @@ async def clip_download(clip_id: int):
     path = Path(row["ingest_path"])
     if not path.exists():
         return HTMLResponse("file missing", status_code=404)
-    return FileResponse(str(path), media_type="video/mp4", filename=row["filename"])
+    return FileResponse(str(path), filename=row["filename"])
+
+
+@app.get("/clip/{clip_id}/photo")
+async def clip_photo(clip_id: int):
+    """The full-size photo (JPEG) for a photo clip."""
+    conn = db.connect()
+    row  = conn.execute("SELECT ingest_path FROM clips WHERE id = ? AND media_type = 'photo'", (clip_id,)).fetchone()
+    if not row or not Path(row["ingest_path"]).exists():
+        return HTMLResponse("not found", status_code=404)
+    return FileResponse(row["ingest_path"], media_type="image/jpeg")
+
+
+@app.get("/clip/{clip_id}/raw")
+async def clip_raw(clip_id: int):
+    """The .GPR raw file for a photo, as a download."""
+    conn = db.connect()
+    row  = conn.execute("SELECT raw_path, filename FROM clips WHERE id = ?", (clip_id,)).fetchone()
+    if not row or not row["raw_path"] or not Path(row["raw_path"]).exists():
+        return HTMLResponse("no raw", status_code=404)
+    name = Path(row["filename"]).stem + ".GPR"
+    return FileResponse(row["raw_path"], media_type="application/octet-stream", filename=name)
 
 
 @app.post("/clips/assign")
@@ -353,7 +374,12 @@ def _enrich_clips(rows) -> list[dict]:
             if c.get("thumbnail_path") else None
         )
         c["display_camera"] = c.get("camera_name") or c.get("camera_slug") or c.get("camera_serial", "?")
+        c["media_type"] = c.get("media_type") or "video"
         c["video_url"] = f"/clip/{c['id']}/video"
+        if c["media_type"] == "photo":
+            c["image_url"] = f"/clip/{c['id']}/photo"
+        if c.get("raw_path"):
+            c["raw_url"] = f"/clip/{c['id']}/raw"
         result.append(c)
     return result
 

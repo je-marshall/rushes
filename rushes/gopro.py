@@ -45,6 +45,7 @@ class MediaFile:
     directory: str
     size:      int
     created:   int | None = None   # 'cre' from the media list — Unix seconds (camera clock)
+    kind:      str = "video"       # "video" or "photo"
 
     def _path(self, name: str) -> str:
         return f"/videos/DCIM/{self.directory}/{name}"
@@ -57,6 +58,11 @@ class MediaFile:
     def download_path(self) -> str:
         # Relative to the client base_url (the camera).
         return self._path(self.filename)
+
+    @property
+    def gpr_path(self) -> str | None:
+        # A RAW photo has a same-stem .GPR sibling (not listed; fetched by path).
+        return self._path(self._stem + ".GPR") if self.kind == "photo" else None
 
     @property
     def thm_path(self) -> str | None:
@@ -143,11 +149,16 @@ async def get_media_list(client: httpx.AsyncClient) -> list[MediaFile]:
         d = media_dir["d"]
         for f in media_dir.get("fs", []):
             name = f["n"]
-            if not name.upper().endswith(".MP4"):
-                continue  # skip photos; .LRV/.THM aren't listed (constructed instead)
+            up = name.upper()
+            if up.endswith(".MP4"):
+                kind = "video"
+            elif up.endswith(".JPG") or up.endswith(".JPEG"):
+                kind = "photo"
+            else:
+                continue  # skip .LRV/.THM/.GPR — handled as siblings, not top-level
             created = f.get("cre")
             files.append(MediaFile(
                 filename=name, directory=d, size=int(f.get("s", 0)),
-                created=int(created) if created else None,
+                created=int(created) if created else None, kind=kind,
             ))
     return files

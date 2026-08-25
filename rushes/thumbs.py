@@ -1,5 +1,6 @@
 import asyncio
 import shutil
+import subprocess
 from pathlib import Path
 
 from . import config
@@ -31,6 +32,19 @@ async def generate(video_path: Path, name: str) -> Path | None:
         )
         await asyncio.wait_for(proc.wait(), timeout=30)
         return dest if dest.exists() else None
+    except Exception:
+        return None
+
+
+def image_thumb(src: Path, name: str) -> Path | None:
+    """Downscaled JPEG thumbnail from a photo (no frame seek)."""
+    dest = config.THUMB_DIR / f"{name}.jpg"
+    try:
+        proc = subprocess.run(
+            ["ffmpeg", "-y", "-i", str(src), "-vf", "scale=640:-1", str(dest)],
+            capture_output=True, timeout=60,
+        )
+        return dest if (proc.returncode == 0 and dest.exists()) else None
     except Exception:
         return None
 
