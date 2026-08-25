@@ -40,6 +40,8 @@ nav a.active { background: #333; color: #fff; }
 .event-block.collapsed .event-body { display: none; }
 .rename-btn { margin-left: 0.5rem; background: #1e1e1e; border: 1px solid #2a2a2a; color: #999; padding: 0.25rem 0.6rem; border-radius: 4px; cursor: pointer; font-size: 0.75rem; }
 .rename-btn:hover { background: #2a2a2a; color: #ccc; }
+.share-hdr-btn { margin-left: 0.25rem; border-color: #2a5a8f; color: #7fa8d4; }
+.share-hdr-btn:hover { background: #1e3a5f; color: #cfe3ff; }
 .empty-event { color: #444; font-size: 0.85rem; padding: 1rem 0; }
 
 .unassign-bar { display: none; background: #3a1a1a; border: 1px solid #6a2a2a; border-radius: 4px; padding: 0.5rem 0.75rem; margin-top: 0.5rem; align-items: center; gap: 0.75rem; font-size: 0.82rem; }
@@ -166,6 +168,10 @@ h1, h2, h3, nav a, button, .filter-btn { text-transform: lowercase; }
       <span class="count">{{ b.count }} clip{{ 's' if b.count != 1 }}</span>
       <button class="rename-btn" type="button" data-id="{{ b.id }}" data-name="{{ b.name }}"
               onclick="event.stopPropagation(); openRename(this)">Rename</button>
+      {% if b.count %}
+      <button class="rename-btn share-hdr-btn" type="button" data-id="{{ b.id }}"
+              onclick="event.stopPropagation(); openShareEvent('{{ b.id }}')">Share</button>
+      {% endif %}
     </div>
     <div class="event-body">
       {% if b.count %}
@@ -242,6 +248,12 @@ function openShare(eid) {
   const s = eventSelected[eid] || new Set();
   if (!s.size) return;
   document.getElementById('share-clip-ids').value = [...s].join(',');
+  document.getElementById('share-dialog').showModal();
+}
+function openShareEvent(eid) {
+  const ids = [...document.querySelectorAll('#grid-' + eid + ' .clip')].map(c => c.dataset.id);
+  if (!ids.length) return;
+  document.getElementById('share-clip-ids').value = ids.join(',');
   document.getElementById('share-dialog').showModal();
 }
 
