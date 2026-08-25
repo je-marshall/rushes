@@ -80,6 +80,10 @@ h1, h2, h3, nav a, button, .filter-btn { text-transform: lowercase; }
 
 <div class="filters">
   <button class="filter-btn" id="fav-toggle" type="button" onclick="toggleFav()">♥ Favourites</button>
+  <div class="media-toggle" id="media-toggle">
+    <button type="button" data-media="video" class="active" onclick="toggleMedia('video')">videos</button>
+    <button type="button" data-media="photo" class="active" onclick="toggleMedia('photo')">images</button>
+  </div>
 </div>
 
 <div id="assign-bar">
@@ -216,12 +220,16 @@ grid.addEventListener('click', async e => {
 });
 
 // --- live refresh ---
+function toggleMedia(type) { Clips.toggleMedia(type); refresh(); }
 async function refresh() {
   try {
     const q = new URLSearchParams();
     if (favOnly) q.set('favourite', 'true');
     const r = await fetch('/api/unsorted.json?' + q.toString());
-    if (r.ok) reconcile((await r.json()).clips);
+    if (r.ok) {
+      const clips = (await r.json()).clips.filter(c => Clips.mediaAllows(c.media_type || 'video'));
+      reconcile(clips);
+    }
   } catch (e) {}
 }
 document.getElementById('fav-toggle').classList.toggle('active', favOnly);

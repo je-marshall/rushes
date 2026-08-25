@@ -108,5 +108,15 @@
     return r.ok;
   }
 
-  window.Clips = { esc, metaHtml, createCard, updateCard, openPlayer, closePlayer, heartToggle };
+  // --- media-type segmented toggle (#media-toggle, shared by all clip views) ---
+  function toggleMedia(type) {
+    const btn = document.querySelector(`#media-toggle button[data-media="${type}"]`);
+    if (btn) btn.classList.toggle("active");
+  }
+  function mediaAllows(type) {
+    const btn = document.querySelector(`#media-toggle button[data-media="${type === "photo" ? "photo" : "video"}"]`);
+    return !btn || btn.classList.contains("active");
+  }
+
+  window.Clips = { esc, metaHtml, createCard, updateCard, openPlayer, closePlayer, heartToggle, toggleMedia, mediaAllows };
 })();

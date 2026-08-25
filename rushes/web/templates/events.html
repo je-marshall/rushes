@@ -98,6 +98,10 @@ h1, h2, h3, nav a, button, .filter-btn { text-transform: lowercase; }
   <div class="events-toolbar">
     <button class="new-event-btn" type="button" onclick="document.getElementById('create-dialog').showModal()">+ New event</button>
     <button class="filter-btn" id="fav-toggle" type="button" onclick="toggleFav()">♥ Favourites</button>
+    <div class="media-toggle" id="media-toggle">
+      <button type="button" data-media="video" class="active" onclick="toggleMedia('video')">videos</button>
+      <button type="button" data-media="photo" class="active" onclick="toggleMedia('photo')">images</button>
+    </div>
     <input type="search" id="event-search" class="event-search" placeholder="Search events…"
            autocomplete="off" oninput="onSearch(this.value)">
     <button class="collapse-btn" id="collapse-all" type="button" onclick="toggleAll()">Collapse all</button>
@@ -250,18 +254,21 @@ function toggleFav() {
   applyFilters();
 }
 function onSearch(v) { searchTerm = v; applyFilters(); }
+function toggleMedia(type) { Clips.toggleMedia(type); applyFilters(); }
 function applyFilters() {
   const q = searchTerm.trim().toLowerCase();
+  const filtering = favOnly || !Clips.mediaAllows('video') || !Clips.mediaAllows('photo');
   document.querySelectorAll('.event-block').forEach(blk => {
     const name = blk.querySelector('h2').textContent.toLowerCase();
     const nameMatch = !q || name.includes(q);
     let vis = 0;
     blk.querySelectorAll('.clip').forEach(c => {
-      const show = !favOnly || c.querySelector('.heart').classList.contains('active');
+      const favOk = !favOnly || c.querySelector('.heart').classList.contains('active');
+      const show = favOk && Clips.mediaAllows(c.dataset.mediaType);
       c.style.display = show ? '' : 'none';
       if (show) vis++;
     });
-    blk.style.display = (nameMatch && !(favOnly && vis === 0)) ? '' : 'none';
+    blk.style.display = (nameMatch && !(filtering && vis === 0)) ? '' : 'none';
   });
 }
 
