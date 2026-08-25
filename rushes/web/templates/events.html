@@ -4,154 +4,57 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Events — Rushes</title>
+<link rel="stylesheet" href="/static/clips.css">
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 body { background: #0f0f0f; color: #e0e0e0; font-family: system-ui, sans-serif; }
 
-header {
-  position: sticky; top: 0; z-index: 20;
-  background: #1a1a1a; border-bottom: 1px solid #2a2a2a;
-  padding: 0.75rem 1.5rem; display: flex; align-items: center; gap: 1.5rem;
-}
-header h1 { font-size: 1.35rem; font-weight: 800; color: #fff; text-transform: lowercase; letter-spacing: -0.03em; font-family: "Montserrat", "Poppins", "Futura", "Century Gothic", system-ui, sans-serif; }
+header { position: sticky; top: 0; z-index: 20; background: #1a1a1a; border-bottom: 1px solid #2a2a2a; padding: 0.75rem 1.5rem; display: flex; align-items: center; gap: 1.5rem; }
+header h1 { font-size: 1.35rem; font-weight: 800; color: #fff; text-transform: lowercase; letter-spacing: -0.03em; font-family: "Montserrat","Poppins","Futura","Century Gothic",system-ui,sans-serif; }
 nav { display: flex; gap: 0.5rem; }
-nav a {
-  color: #888; text-decoration: none;
-  padding: 0.3rem 0.75rem; border-radius: 999px; font-size: 0.85rem;
-}
+nav a { color: #888; text-decoration: none; padding: 0.3rem 0.75rem; border-radius: 999px; font-size: 0.85rem; }
 nav a:hover  { background: #2a2a2a; color: #ddd; }
 nav a.active { background: #333; color: #fff; }
 
 .page { max-width: 1100px; margin: 0 auto; padding: 1.5rem; }
-
-.create-form {
-  background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 8px;
-  padding: 1rem 1.25rem; margin-bottom: 2rem;
-  display: flex; gap: 0.75rem; align-items: flex-end; flex-wrap: wrap;
-}
-.create-form label { font-size: 0.8rem; color: #888; display: flex; flex-direction: column; gap: 0.3rem; }
-.create-form input, .create-form textarea {
-  background: #111; border: 1px solid #333; color: #eee;
-  padding: 0.4rem 0.6rem; border-radius: 4px; font-size: 0.85rem;
-  width: 260px;
-}
-.create-form button {
-  background: #2a6abf; border: none; color: #fff;
-  padding: 0.45rem 1rem; border-radius: 4px; cursor: pointer; font-size: 0.85rem;
-  align-self: flex-end;
-}
-.create-form button:hover { background: #3a7acf; }
-
-.event-block { margin-bottom: 2.5rem; }
-.event-header {
-  display: flex; align-items: baseline; gap: 0.75rem;
-  border-bottom: 1px solid #2a2a2a; padding-bottom: 0.5rem; margin-bottom: 0.75rem;
-}
-.event-header h2 { font-size: 1rem; color: #fff; }
-.event-header .slug { font-size: 0.75rem; color: #555; font-family: monospace; }
-.event-header .count { font-size: 0.75rem; color: #666; margin-left: auto; }
-
-.clips-strip {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 1px; background: #1a1a1a;
-}
-.clip {
-  background: #0f0f0f; cursor: pointer;
-  outline: 2px solid transparent;
-}
-.clip.selected { outline: 2px solid #8b3a3a; }
-
-.thumb-wrap { position: relative; aspect-ratio: 16/9; background: #1a1a1a; overflow: hidden; }
-.thumb-wrap img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.no-thumb { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: #333; font-size: 1.5rem; }
-.play-btn {
-  position: absolute; inset: 0; margin: auto;
-  width: 2.8rem; height: 2.8rem; border-radius: 50%; border: none; cursor: pointer;
-  background: rgba(0,0,0,0.55); color: #fff; font-size: 1.1rem;
-  display: flex; align-items: center; justify-content: center;
-  opacity: 0; transition: opacity 0.12s, background 0.12s;
-}
-.play-btn:hover { background: rgba(42,106,191,0.9); }
-.thumb-wrap:hover .play-btn { opacity: 1; }
-body.select-mode .play-btn { display: none; }
-
-.checkbox {
-  position: absolute; top: 0.4rem; right: 0.4rem;
-  width: 1.4rem; height: 1.4rem; border-radius: 5px;
-  border: 2px solid rgba(255,255,255,0.8); background: rgba(0,0,0,0.35);
-  cursor: pointer; display: flex; align-items: center; justify-content: center;
-  color: #fff; font-size: 0.85rem; line-height: 1; opacity: 0; transition: opacity 0.12s;
-}
-.checkbox::after { content: "✓"; opacity: 0; }
-.thumb-wrap:hover .checkbox, body.select-mode .checkbox { opacity: 1; }
-.clip.selected .checkbox { background: #8b3a3a; border-color: #8b3a3a; opacity: 1; }
-.clip.selected .checkbox::after { opacity: 1; }
-
-.heart { position: absolute; bottom: 0.35rem; left: 0.45rem; border: none; background: none; cursor: pointer; padding: 0; color: #fff; font-size: 1.15rem; line-height: 1; opacity: 0; transition: opacity 0.12s, transform 0.08s; text-shadow: 0 1px 4px rgba(0,0,0,0.7); }
-.thumb-wrap:hover .heart { opacity: 0.85; }
-.heart:hover { transform: scale(1.15); }
-.heart.active { opacity: 1; color: #ff4d6d; }
-
-.clip-label { padding: 0.4rem 0.5rem; font-size: 0.72rem; color: #777;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-.unassign-bar {
-  display: none; background: #3a1a1a; border: 1px solid #6a2a2a;
-  border-radius: 4px; padding: 0.5rem 0.75rem; margin-top: 0.5rem;
-  align-items: center; gap: 0.75rem; font-size: 0.82rem;
-}
-.unassign-bar.visible { display: flex; }
-.unassign-bar button {
-  background: #8b3a3a; border: none; color: #fff;
-  padding: 0.3rem 0.7rem; border-radius: 4px; cursor: pointer; font-size: 0.8rem;
-}
-.unassign-bar .share-btn { background: #2a6abf; }
-dialog select { display: block; width: 100%; margin-top: 0.3rem; background: #111; border: 1px solid #333; color: #eee; padding: 0.5rem 0.6rem; border-radius: 5px; font-size: 0.9rem; }
-.empty-event { color: #444; font-size: 0.85rem; padding: 1rem 0; }
-.rename-btn { margin-left: 0.5rem; background: #1e1e1e; border: 1px solid #2a2a2a; color: #999; padding: 0.25rem 0.6rem; border-radius: 4px; cursor: pointer; font-size: 0.75rem; }
-.rename-btn:hover { background: #2a2a2a; color: #ccc; }
-
-/* Player overlay (shared look with Unsorted) */
-#player { display: none; position: fixed; inset: 0; z-index: 40; background: rgba(0,0,0,0.9); align-items: center; justify-content: center; padding: 1.5rem; }
-#player.visible { display: flex; }
-#player-box { display: flex; flex-direction: column; max-width: 95vw; max-height: 92vh; }
-#player-bar { display: flex; align-items: center; gap: 1rem; padding: 0 0.2rem 0.6rem; color: #ddd; }
-#player-title { font-size: 0.9rem; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#player-bar a { color: #aad4ff; text-decoration: none; font-size: 0.82rem; }
-#player-bar a:hover { text-decoration: underline; }
-#player-close { background: none; border: none; color: #ccc; font-size: 1.4rem; cursor: pointer; line-height: 1; }
-#player-close:hover { color: #fff; }
-#player-video { width: min(90vw, 1600px); max-height: 80vh; background: #000; border-radius: 6px; display: block; }
-#player-image { max-width: min(92vw, 1800px); max-height: 82vh; border-radius: 6px; display: block; }
-#player-error { display: none; background: #1a1a1a; border: 1px solid #3a1518; color: #f0a0a8; padding: 1.5rem; border-radius: 6px; max-width: 30rem; text-align: center; font-size: 0.9rem; line-height: 1.6; }
-#player-error a { color: #aad4ff; }
-
-/* New-event button + dialog */
-.new-event-btn { background: #2a6abf; border: none; color: #fff; padding: 0.5rem 1rem; border-radius: 5px; cursor: pointer; font-size: 0.9rem; margin-bottom: 1.5rem; }
-.new-event-btn:hover { background: #3a7acf; }
 .filters { margin-bottom: 1rem; }
 .filter-btn { background: #1e1e1e; border: 1px solid #2a2a2a; color: #888; padding: 0.3rem 0.85rem; border-radius: 999px; cursor: pointer; font-size: 0.82rem; }
 .filter-btn:hover { background: #2a2a2a; color: #ccc; }
 .filter-btn.active { background: #3a1a26; border-color: #ff4d6d; color: #ff8da3; }
+
+.new-event-btn { background: #2a6abf; border: none; color: #fff; padding: 0.5rem 1rem; border-radius: 5px; cursor: pointer; font-size: 0.9rem; margin-bottom: 1.5rem; }
+.new-event-btn:hover { background: #3a7acf; }
+
+.event-block { margin-bottom: 2.5rem; }
+.event-header { display: flex; align-items: baseline; gap: 0.75rem; border-bottom: 1px solid #2a2a2a; padding-bottom: 0.5rem; margin-bottom: 0.75rem; cursor: pointer; }
+.event-header h2 { font-size: 1rem; color: #fff; }
+.event-header .slug { font-size: 0.75rem; color: #555; font-family: monospace; }
+.event-header .ev-date { font-size: 0.72rem; color: #888; }
+.event-header .count { font-size: 0.75rem; color: #666; margin-left: auto; }
+.chevron { color: #666; font-size: 0.8rem; display: inline-block; transition: transform 0.15s; }
+.event-block:not(.collapsed) .chevron { transform: rotate(90deg); }
+.event-block.collapsed .event-body { display: none; }
+.rename-btn { margin-left: 0.5rem; background: #1e1e1e; border: 1px solid #2a2a2a; color: #999; padding: 0.25rem 0.6rem; border-radius: 4px; cursor: pointer; font-size: 0.75rem; }
+.rename-btn:hover { background: #2a2a2a; color: #ccc; }
+.empty-event { color: #444; font-size: 0.85rem; padding: 1rem 0; }
+
+.unassign-bar { display: none; background: #3a1a1a; border: 1px solid #6a2a2a; border-radius: 4px; padding: 0.5rem 0.75rem; margin-top: 0.5rem; align-items: center; gap: 0.75rem; font-size: 0.82rem; }
+.unassign-bar.visible { display: flex; }
+.unassign-bar span { color: #f0b0b0; }
+.unassign-bar button { background: #8b3a3a; border: none; color: #fff; padding: 0.3rem 0.7rem; border-radius: 4px; cursor: pointer; font-size: 0.8rem; }
+.unassign-bar .share-btn { background: #2a6abf; }
+.unassign-bar form { display: inline; }
+
 dialog { background: #1a1a1a; color: #e0e0e0; border: 1px solid #2a2a2a; border-radius: 8px; padding: 1.5rem; width: min(420px, 92vw); }
 dialog::backdrop { background: rgba(0,0,0,0.6); }
 dialog h3 { font-size: 1rem; color: #fff; margin-bottom: 1rem; }
 dialog label { display: block; font-size: 0.8rem; color: #888; margin-bottom: 0.9rem; }
-dialog input { display: block; width: 100%; margin-top: 0.3rem; background: #111; border: 1px solid #333; color: #eee; padding: 0.5rem 0.6rem; border-radius: 4px; font-size: 0.9rem; }
+dialog input, dialog select { display: block; width: 100%; margin-top: 0.3rem; background: #111; border: 1px solid #333; color: #eee; padding: 0.5rem 0.6rem; border-radius: 4px; font-size: 0.9rem; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 0.6rem; margin-top: 0.5rem; }
 .dialog-actions button { padding: 0.45rem 1rem; border-radius: 5px; cursor: pointer; font-size: 0.85rem; border: none; }
 .dialog-actions button[type=submit] { background: #2a6abf; color: #fff; }
 .dialog-actions button.secondary { background: #2a2a2a; color: #bbb; }
 
-/* Collapsible events */
-.event-header { cursor: pointer; }
-.chevron { color: #666; font-size: 0.8rem; display: inline-block; transition: transform 0.15s; }
-.event-block:not(.collapsed) .chevron { transform: rotate(90deg); }
-.event-block.collapsed .event-body { display: none; }
-.ev-date { font-size: 0.72rem; color: #888; }
-
-/* Mobile: collapse nav into a burger menu */
 .burger { display: none; background: none; border: none; color: #ccc; font-size: 1.5rem; cursor: pointer; padding: 0.2rem 0.5rem; line-height: 1; }
 @media (max-width: 680px) {
   header { flex-wrap: wrap; gap: 0.5rem 1rem; }
@@ -161,9 +64,6 @@ dialog input { display: block; width: 100%; margin-top: 0.3rem; background: #111
   header > form[action="/logout"] { display: none; width: 100%; margin-left: 0; }
   body.nav-open nav { display: flex; }
   body.nav-open header > form[action="/logout"] { display: block; }
-
-  /* stop the event header + forms overflowing to the right */
-  .page { padding: 1rem; }
   .event-header { flex-wrap: wrap; }
   .event-header .count { margin-left: 0; }
   .rename-btn { margin-left: 0; }
@@ -194,18 +94,13 @@ dialog input { display: block; width: 100%; margin-top: 0.3rem; background: #111
     <button class="filter-btn" id="fav-toggle" type="button" onclick="toggleFav()">♥ Favourites</button>
   </div>
 
-  <button class="new-event-btn" type="button"
-          onclick="document.getElementById('create-dialog').showModal()">+ New event</button>
+  <button class="new-event-btn" type="button" onclick="document.getElementById('create-dialog').showModal()">+ New event</button>
 
   <dialog id="create-dialog">
     <form method="post" action="/events/create">
       <h3>New event</h3>
-      <label>Name
-        <input name="name" placeholder="Pembrokeshire beach, Aug 2025" required>
-      </label>
-      <label>Description (optional)
-        <input name="description" placeholder="3-day trip, Hero 10 + Hero 13">
-      </label>
+      <label>Name <input name="name" placeholder="Pembrokeshire beach, Aug 2025" required></label>
+      <label>Description (optional) <input name="description" placeholder="3-day trip, Hero 10 + Hero 13"></label>
       <div class="dialog-actions">
         <button type="button" class="secondary" onclick="document.getElementById('create-dialog').close()">Cancel</button>
         <button type="submit">Create event</button>
@@ -216,9 +111,7 @@ dialog input { display: block; width: 100%; margin-top: 0.3rem; background: #111
   <dialog id="rename-dialog">
     <form method="post" id="rename-form">
       <h3>Rename event</h3>
-      <label>Name
-        <input name="name" id="rename-input" required autocomplete="off">
-      </label>
+      <label>Name <input name="name" id="rename-input" required autocomplete="off"></label>
       <div class="dialog-actions">
         <button type="button" class="secondary" onclick="document.getElementById('rename-dialog').close()">Cancel</button>
         <button type="submit">Rename</button>
@@ -226,194 +119,107 @@ dialog input { display: block; width: 100%; margin-top: 0.3rem; background: #111
     </form>
   </dialog>
 
-  {% if not event_data %}
+  <dialog id="share-dialog">
+    <form method="post" action="/shares/create">
+      <h3>Create share link</h3>
+      <input type="hidden" name="clip_ids" id="share-clip-ids">
+      <label>Expires
+        <select name="expiry">
+          <option value="24h">24 hours</option>
+          <option value="7d" selected>7 days</option>
+          <option value="30d">30 days</option>
+          <option value="never">Never</option>
+        </select>
+      </label>
+      <label>Password (optional)
+        <input type="text" name="password" autocomplete="off" spellcheck="false" placeholder="leave blank for none">
+      </label>
+      <div class="dialog-actions">
+        <button type="button" class="secondary" onclick="document.getElementById('share-dialog').close()">Cancel</button>
+        <button type="submit">Create link</button>
+      </div>
+    </form>
+  </dialog>
+
+  {% if not blocks %}
     <p style="color:#555">No events yet — create one above, then assign clips from the Unsorted view.</p>
   {% endif %}
 
-  {% for ed in event_data %}
-  {% set evt = ed.event %}
-  {% set clips = ed.clips %}
-  <div class="event-block collapsed" id="event-{{ evt.id }}">
+  {% for b in blocks %}
+  <div class="event-block collapsed" data-event="{{ b.id }}" id="event-{{ b.id }}">
     <div class="event-header" onclick="toggleCollapse(this, event)">
       <span class="chevron">▸</span>
-      <h2>{{ evt.name }}</h2>
-      <span class="slug">{{ evt.slug }}/</span>
-      {% if clips and clips[0].recorded_at %}<span class="ev-date">{{ clips[0].recorded_at[:10] }}</span>{% endif %}
-      <span class="count">{{ clips | length }} clip{{ 's' if clips | length != 1 }}</span>
-      <button class="rename-btn" type="button" data-id="{{ evt.id }}" data-name="{{ evt.name }}"
+      <h2>{{ b.name }}</h2>
+      <span class="slug">{{ b.slug }}/</span>
+      {% if b.recorded %}<span class="ev-date">{{ b.recorded[:10] }}</span>{% endif %}
+      <span class="count">{{ b.count }} clip{{ 's' if b.count != 1 }}</span>
+      <button class="rename-btn" type="button" data-id="{{ b.id }}" data-name="{{ b.name }}"
               onclick="event.stopPropagation(); openRename(this)">Rename</button>
     </div>
     <div class="event-body">
-
-    {% if not clips %}
-      <p class="empty-event">No clips assigned yet.</p>
-    {% else %}
-      <div class="clips-strip" id="strip-{{ evt.id }}">
-        {% for clip in clips %}
-        <div class="clip" data-id="{{ clip.id }}" data-event="{{ evt.id }}" data-filename="{{ clip.filename }}"
-             data-media-type="{{ clip.media_type }}"{% if clip.raw_url %} data-raw="1"{% endif %}>
-          <div class="thumb-wrap">
-            {% if clip.thumb_url %}
-              <img src="{{ clip.thumb_url }}" alt="{{ clip.filename }}" loading="lazy">
-            {% else %}
-              <div class="no-thumb">{% if clip.media_type == 'photo' %}🖼{% else %}▶{% endif %}</div>
-            {% endif %}
-            <button class="play-btn" title="{% if clip.media_type == 'photo' %}View{% else %}Play{% endif %}">{% if clip.media_type == 'photo' %}⤢{% else %}▶{% endif %}</button>
-            <div class="checkbox" title="Select"></div>
-            <button class="heart {% if clip.is_favourite %}active{% endif %}" title="Favourite">♥</button>
-          </div>
-          <div class="clip-label" title="{{ clip.filename }}">{{ clip.display_camera }} / {{ clip.filename }}</div>
+      {% if b.count %}
+        <div class="grid" id="grid-{{ b.id }}"></div>
+        <div class="unassign-bar" id="ubar-{{ b.id }}">
+          <span id="ucount-{{ b.id }}">0 selected</span>
+          <button type="button" class="share-btn" onclick="openShare('{{ b.id }}')">Share</button>
+          <form method="post" action="/events/{{ b.id }}/unassign">
+            <input type="hidden" name="clip_ids" id="uids-{{ b.id }}">
+            <button type="submit">Move back to Unsorted</button>
+          </form>
         </div>
-        {% endfor %}
-      </div>
-      <div class="unassign-bar" id="ubar-{{ evt.id }}">
-        <span id="ucount-{{ evt.id }}">0 selected</span>
-        <button type="button" class="share-btn" onclick="openShare('{{ evt.id }}')">Share</button>
-        <form method="post" action="/events/{{ evt.id }}/unassign" id="uform-{{ evt.id }}">
-          <input type="hidden" name="clip_ids" id="uids-{{ evt.id }}">
-          <button type="submit">Move back to Unsorted</button>
-        </form>
-      </div>
-    {% endif %}
-    </div><!-- event-body -->
+      {% else %}
+        <p class="empty-event">No clips assigned yet.</p>
+      {% endif %}
+    </div>
   </div>
   {% endfor %}
 
 </div>
 
-<dialog id="share-dialog">
-  <form method="post" action="/shares/create">
-    <h3>Create share link</h3>
-    <input type="hidden" name="clip_ids" id="share-clip-ids">
-    <label>Expires
-      <select name="expiry">
-        <option value="24h">24 hours</option>
-        <option value="7d" selected>7 days</option>
-        <option value="30d">30 days</option>
-        <option value="never">Never</option>
-      </select>
-    </label>
-    <label>Password (optional)
-      <input type="text" name="password" autocomplete="off" spellcheck="false" placeholder="leave blank for none">
-    </label>
-    <div class="dialog-actions">
-      <button type="button" class="secondary" onclick="document.getElementById('share-dialog').close()">Cancel</button>
-      <button type="submit">Create link</button>
-    </div>
-  </form>
-</dialog>
-
-<div id="player">
-  <div id="player-box">
-    <div id="player-bar">
-      <span id="player-title"></span>
-      <span style="flex:1"></span>
-      <a id="player-raw" href="#" download style="display:none">Download RAW</a>
-      <a id="player-download" href="#" download>Download</a>
-      <button id="player-close" onclick="closePlayer()">✕</button>
-    </div>
-    <video id="player-video" controls playsinline></video>
-    <img id="player-image" alt="" style="display:none">
-    <div id="player-error">
-      This clip can’t be played in the browser — it’s most likely HEVC/H.265.<br>
-      <a id="player-error-dl" href="#" download>Download the file</a> to view it locally.
-    </div>
-  </div>
-</div>
-
+<script id="events-data" type="application/json">{{ blocks | tojson }}</script>
+<script src="/static/clips.js"></script>
 <script>
-// Collapse / expand an event (collapsed by default). Ignore clicks on the
-// rename form so editing the name doesn't toggle the section.
+const blocks = JSON.parse(document.getElementById('events-data').textContent);
+for (const b of blocks) {
+  const grid = document.getElementById('grid-' + b.id);
+  if (!grid) continue;
+  for (const c of b.clips) grid.appendChild(Clips.createCard(c));
+}
+
+// --- collapse ---
 function toggleCollapse(header, e) {
   if (e.target.closest('.rename-btn')) return;
   header.closest('.event-block').classList.toggle('collapsed');
 }
 
+// --- selection (per event) ---
+const eventSelected = {};
+function anySelected() { return Object.values(eventSelected).some(s => s.size > 0); }
+function toggleSelect(card) {
+  const id = card.dataset.id;
+  const eid = card.closest('.event-block').dataset.event;
+  const s = eventSelected[eid] || (eventSelected[eid] = new Set());
+  if (s.has(id)) { s.delete(id); card.classList.remove('selected'); }
+  else           { s.add(id);    card.classList.add('selected');    }
+  updateUnassignBar(eid);
+  document.body.classList.toggle('select-mode', anySelected());
+}
+function updateUnassignBar(eid) {
+  const s = eventSelected[eid] || new Set();
+  const bar = document.getElementById('ubar-' + eid);
+  if (!bar) return;
+  document.getElementById('ucount-' + eid).textContent = `${s.size} selected`;
+  document.getElementById('uids-' + eid).value = [...s].join(',');
+  bar.classList.toggle('visible', s.size > 0);
+}
+
+// --- rename / share dialogs ---
 function openRename(btn) {
   const form = document.getElementById('rename-form');
   form.action = `/events/${btn.dataset.id}/rename`;
   document.getElementById('rename-input').value = btn.dataset.name;
   document.getElementById('rename-dialog').showModal();
 }
-
-// Selection is per event (each event unassigns its own clips), but "select mode"
-// is global — matching the Unsorted view: once anything is ticked, play buttons
-// hide and a click anywhere on a card toggles selection.
-const eventSelected = {};  // eventId → Set of clip ids
-
-function anySelected() { return Object.values(eventSelected).some(s => s.size > 0); }
-
-function toggleSelect(card) {
-  const id  = card.dataset.id;
-  const eid = card.dataset.event;
-  const s   = eventSelected[eid] || (eventSelected[eid] = new Set());
-  if (s.has(id)) { s.delete(id); card.classList.remove('selected'); }
-  else           { s.add(id);    card.classList.add('selected');    }
-  updateUnassignBar(eid);
-  document.body.classList.toggle('select-mode', anySelected());
-}
-
-function updateUnassignBar(eid) {
-  const s   = eventSelected[eid] || new Set();
-  const bar = document.getElementById(`ubar-${eid}`);
-  if (!bar) return;
-  document.getElementById(`ucount-${eid}`).textContent = `${s.size} selected`;
-  document.getElementById(`uids-${eid}`).value = [...s].join(',');
-  bar.classList.toggle('visible', s.size > 0);
-}
-
-// --- player (same as Unsorted) ---
-const video = document.getElementById('player-video');
-const pimg  = document.getElementById('player-image');
-function openPlayer(card) {
-  const id = card.dataset.id;
-  const isPhoto = card.dataset.mediaType === 'photo';
-  document.getElementById('player-title').textContent = card.dataset.filename || '';
-  document.getElementById('player-download').href = `/clip/${id}/download`;
-  const rawLink = document.getElementById('player-raw');
-  if (card.dataset.raw) { rawLink.href = `/clip/${id}/raw`; rawLink.style.display = 'inline'; }
-  else { rawLink.style.display = 'none'; }
-  document.getElementById('player-error').style.display = 'none';
-  if (isPhoto) {
-    video.pause(); video.removeAttribute('src'); video.load(); video.style.display = 'none';
-    pimg.src = `/clip/${id}/photo`; pimg.style.display = 'block';
-  } else {
-    pimg.removeAttribute('src'); pimg.style.display = 'none';
-    document.getElementById('player-error-dl').href = `/clip/${id}/download`;
-    video.style.display = 'block';
-    video.src = `/clip/${id}/video`;
-    video.play().catch(() => {});
-  }
-  document.getElementById('player').classList.add('visible');
-}
-function closePlayer() {
-  video.pause(); video.removeAttribute('src'); video.load();
-  pimg.removeAttribute('src');
-  document.getElementById('player').classList.remove('visible');
-}
-video.addEventListener('error', () => {
-  if (video.style.display === 'none') return;   // showing a photo, not a video error
-  video.style.display = 'none';
-  document.getElementById('player-error').style.display = 'block';
-});
-document.getElementById('player').addEventListener('click', e => { if (e.target.id === 'player') closePlayer(); });
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closePlayer(); });
-
-// --- one delegated click handler for all event strips ---
-document.querySelector('.page').addEventListener('click', e => {
-  const card = e.target.closest('.clip');
-  if (!card) return;
-  const heart = e.target.closest('.heart');   // favourite works in any mode
-  if (heart) {
-    fetch(`/clips/${card.dataset.id}/favourite`, {method: 'POST'})
-      .then(r => { if (r.ok) { heart.classList.toggle('active'); applyFav(); } });
-    return;
-  }
-  if (anySelected())                 { toggleSelect(card); return; }   // select mode
-  if (e.target.closest('.play-btn')) { openPlayer(card); return; }
-  if (e.target.closest('.checkbox')) { toggleSelect(card); return; }
-});
-
 function openShare(eid) {
   const s = eventSelected[eid] || new Set();
   if (!s.size) return;
@@ -421,7 +227,7 @@ function openShare(eid) {
   document.getElementById('share-dialog').showModal();
 }
 
-// Favourites filter: hide non-faved clips (and events with none).
+// --- favourites filter ---
 let favOnly = false;
 function toggleFav() {
   favOnly = !favOnly;
@@ -439,6 +245,16 @@ function applyFav() {
     blk.style.display = (favOnly && vis === 0) ? 'none' : '';
   });
 }
+
+// --- one delegated click handler across all event strips ---
+document.querySelector('.page').addEventListener('click', e => {
+  const card = e.target.closest('.clip');
+  if (!card) return;
+  if (e.target.closest('.heart'))    { Clips.heartToggle(card).then(ok => { if (ok) applyFav(); }); return; }
+  if (anySelected())                 { toggleSelect(card); return; }
+  if (e.target.closest('.play-btn')) { Clips.openPlayer(card); return; }
+  if (e.target.closest('.checkbox')) { toggleSelect(card); return; }
+});
 </script>
 </body>
 </html>

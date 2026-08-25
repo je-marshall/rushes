@@ -48,6 +48,7 @@ app.add_middleware(SessionMiddleware, secret_key=config.SECRET_KEY, max_age=60 *
 # Only thumbnails are served by the web app. Footage playback is via Jellyfin,
 # and clips carry absolute paths so the footage root can be moved freely.
 app.mount("/thumbs", StaticFiles(directory=str(config.THUMB_DIR)), name="thumbs")
+app.mount("/static", StaticFiles(directory=str(Path(__file__).parent / "static")), name="static")
 
 _templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
@@ -84,7 +85,7 @@ async def index(request: Request, favourite: bool = False):
 @app.get("/api/unsorted.json")
 async def unsorted_json(favourite: bool = False):
     conn = db.connect()
-    return {"clips": _query_unsorted(conn, favourite)}
+    return {"clips": [_clip_public(c) for c in _query_unsorted(conn, favourite)]}
 
 
 @app.get("/clip/{clip_id}/video")
@@ -170,7 +171,7 @@ async def events_list(request: Request):
     conn       = db.connect()
     event_rows = conn.execute("SELECT * FROM events ORDER BY created_at DESC").fetchall()
     # Attach clip counts and camera breakdown to each event
-    event_data = []
+    blocks = []
     for evt in event_rows:
         clips = conn.execute("""
             SELECT c.*, cam.name AS camera_name, cam.slug AS camera_slug
@@ -179,19 +180,18 @@ async def events_list(request: Request):
             WHERE c.event_id = ?
             ORDER BY c.recorded_at DESC NULLS LAST
         """, (evt["id"],)).fetchall()
-        event_data.append({"event": evt, "clips": _enrich_clips(clips)})
+        enriched = _enrich_clips(clips)
+        top = enriched[0]["recorded_at"] if enriched else None
+        blocks.append({
+            "id": evt["id"], "name": evt["name"], "slug": evt["slug"],
+            "count": len(enriched), "recorded": top,
+            "clips": [_clip_public(c) for c in enriched],
+        })
 
-    # Order events by their most recent clip (clips are already recorded_at DESC,
-    # so clips[0] is the newest). Events with dated footage first (newest at top);
-    # undated/empty events fall to the bottom.
-    def _recency(ed):
-        top = ed["clips"][0]["recorded_at"] if ed["clips"] else None
-        return (top is not None, top or "")
-    event_data.sort(key=_recency, reverse=True)
+    # Newest footage first; undated/empty events fall to the bottom.
+    blocks.sort(key=lambda b: (b["recorded"] is not None, b["recorded"] or ""), reverse=True)
 
-    return _templates.TemplateResponse(request, "events.html", {
-        "event_data": event_data,
-    })
+    return _templates.TemplateResponse(request, "events.html", {"blocks": blocks})
 
 
 @app.post("/events/create")
@@ -476,6 +476,17 @@ def _enrich_clips(rows) -> list[dict]:
             c["raw_url"] = f"/clip/{c['id']}/raw"
         result.append(c)
     return result
+
+
+# Slim view sent to the browser — display fields only (no internal paths).
+_PUBLIC_FIELDS = ("id", "filename", "media_type", "display_camera",
+                  "duration_secs", "recorded_at", "size_bytes", "is_favourite",
+                  "thumb_url", "video_url", "image_url", "raw_url")
+
+def _clip_public(c: dict) -> dict:
+    d = {k: c.get(k) for k in _PUBLIC_FIELDS}
+    d["download_url"] = f"/clip/{c['id']}/download"
+    return d
 
 
 def main() -> None:
