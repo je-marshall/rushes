@@ -56,10 +56,9 @@ _templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 # Clips — unsorted view
 # ---------------------------------------------------------------------------
 
-def _query_unsorted(conn, favourite: bool, flagged: bool) -> list[dict]:
+def _query_unsorted(conn, favourite: bool) -> list[dict]:
     where = ["c.event_id IS NULL"]
     if favourite: where.append("c.is_favourite = 1")
-    if flagged:   where.append("c.flagged = 1")
     rows = conn.execute(f"""
         SELECT c.*, cam.name AS camera_name, cam.slug AS camera_slug
         FROM clips c
@@ -71,21 +70,21 @@ def _query_unsorted(conn, favourite: bool, flagged: bool) -> list[dict]:
 
 
 @app.get("/", response_class=HTMLResponse)
-async def index(request: Request, favourite: bool = False, flagged: bool = False):
+async def index(request: Request, favourite: bool = False):
     # The grid is populated + kept live by JS via /api/unsorted.json; here we
     # just render the shell and the events list for the assign dropdown.
     conn       = db.connect()
     all_events = conn.execute("SELECT * FROM events ORDER BY created_at DESC").fetchall()
     return _templates.TemplateResponse(request, "index.html", {
-        "favourite": favourite, "flagged": flagged,
+        "favourite": favourite,
         "all_events": all_events,
     })
 
 
 @app.get("/api/unsorted.json")
-async def unsorted_json(favourite: bool = False, flagged: bool = False):
+async def unsorted_json(favourite: bool = False):
     conn = db.connect()
-    return {"clips": _query_unsorted(conn, favourite, flagged)}
+    return {"clips": _query_unsorted(conn, favourite)}
 
 
 @app.get("/clip/{clip_id}/video")
@@ -158,14 +157,6 @@ async def assign_clips(clip_ids: str = Form(...), event_id: str = Form(""),
 async def toggle_favourite(clip_id: int):
     conn = db.connect()
     conn.execute("UPDATE clips SET is_favourite = NOT is_favourite WHERE id = ?", (clip_id,))
-    conn.commit()
-    return {"ok": True}
-
-
-@app.post("/clips/{clip_id}/flag")
-async def toggle_flag(clip_id: int):
-    conn = db.connect()
-    conn.execute("UPDATE clips SET flagged = NOT flagged WHERE id = ?", (clip_id,))
     conn.commit()
     return {"ok": True}
 

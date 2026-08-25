@@ -88,6 +88,11 @@ body.select-mode .play-btn { display: none; }
 .clip.selected .checkbox { background: #8b3a3a; border-color: #8b3a3a; opacity: 1; }
 .clip.selected .checkbox::after { opacity: 1; }
 
+.heart { position: absolute; bottom: 0.35rem; left: 0.45rem; border: none; background: none; cursor: pointer; padding: 0; color: #fff; font-size: 1.15rem; line-height: 1; opacity: 0; transition: opacity 0.12s, transform 0.08s; text-shadow: 0 1px 4px rgba(0,0,0,0.7); }
+.thumb-wrap:hover .heart { opacity: 0.85; }
+.heart:hover { transform: scale(1.15); }
+.heart.active { opacity: 1; color: #ff4d6d; }
+
 .clip-label { padding: 0.4rem 0.5rem; font-size: 0.72rem; color: #777;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
@@ -101,6 +106,8 @@ body.select-mode .play-btn { display: none; }
   background: #8b3a3a; border: none; color: #fff;
   padding: 0.3rem 0.7rem; border-radius: 4px; cursor: pointer; font-size: 0.8rem;
 }
+.unassign-bar .share-btn { background: #2a6abf; }
+dialog select { display: block; width: 100%; margin-top: 0.3rem; background: #111; border: 1px solid #333; color: #eee; padding: 0.5rem 0.6rem; border-radius: 5px; font-size: 0.9rem; }
 .empty-event { color: #444; font-size: 0.85rem; padding: 1rem 0; }
 .rename-btn { margin-left: 0.5rem; background: #1e1e1e; border: 1px solid #2a2a2a; color: #999; padding: 0.25rem 0.6rem; border-radius: 4px; cursor: pointer; font-size: 0.75rem; }
 .rename-btn:hover { background: #2a2a2a; color: #ccc; }
@@ -165,10 +172,9 @@ dialog input { display: block; width: 100%; margin-top: 0.3rem; background: #111
   <h1>Rushes</h1>
   <button class="burger" type="button" aria-label="Menu" onclick="document.body.classList.toggle('nav-open')">☰</button>
   <nav>
-    <a href="/">Unsorted</a>
-    <a href="/?favourite=true">★ Favourites</a>
-    <a href="/?flagged=true">⚑ Flagged</a>
     <a href="/events" class="active">Events</a>
+    <a href="/">Unsorted</a>
+    <a href="/?favourite=true">♥ Favourites</a>
     <a href="/cameras">Cameras</a>
     <a href="/import">Import</a>
     <a href="/shares">Shares</a>
@@ -247,6 +253,7 @@ dialog input { display: block; width: 100%; margin-top: 0.3rem; background: #111
             {% endif %}
             <button class="play-btn" title="{% if clip.media_type == 'photo' %}View{% else %}Play{% endif %}">{% if clip.media_type == 'photo' %}⤢{% else %}▶{% endif %}</button>
             <div class="checkbox" title="Select"></div>
+            <button class="heart {% if clip.is_favourite %}active{% endif %}" title="Favourite">♥</button>
           </div>
           <div class="clip-label" title="{{ clip.filename }}">{{ clip.display_camera }} / {{ clip.filename }}</div>
         </div>
@@ -254,6 +261,7 @@ dialog input { display: block; width: 100%; margin-top: 0.3rem; background: #111
       </div>
       <div class="unassign-bar" id="ubar-{{ evt.id }}">
         <span id="ucount-{{ evt.id }}">0 selected</span>
+        <button type="button" class="share-btn" onclick="openShare('{{ evt.id }}')">Share</button>
         <form method="post" action="/events/{{ evt.id }}/unassign" id="uform-{{ evt.id }}">
           <input type="hidden" name="clip_ids" id="uids-{{ evt.id }}">
           <button type="submit">Move back to Unsorted</button>
@@ -265,6 +273,28 @@ dialog input { display: block; width: 100%; margin-top: 0.3rem; background: #111
   {% endfor %}
 
 </div>
+
+<dialog id="share-dialog">
+  <form method="post" action="/shares/create">
+    <h3>Create share link</h3>
+    <input type="hidden" name="clip_ids" id="share-clip-ids">
+    <label>Expires
+      <select name="expiry">
+        <option value="24h">24 hours</option>
+        <option value="7d" selected>7 days</option>
+        <option value="30d">30 days</option>
+        <option value="never">Never</option>
+      </select>
+    </label>
+    <label>Password (optional)
+      <input type="text" name="password" autocomplete="off" spellcheck="false" placeholder="leave blank for none">
+    </label>
+    <div class="dialog-actions">
+      <button type="button" class="secondary" onclick="document.getElementById('share-dialog').close()">Cancel</button>
+      <button type="submit">Create link</button>
+    </div>
+  </form>
+</dialog>
 
 <div id="player">
   <div id="player-box">
@@ -366,10 +396,23 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') closePlayer(
 document.querySelector('.page').addEventListener('click', e => {
   const card = e.target.closest('.clip');
   if (!card) return;
+  const heart = e.target.closest('.heart');   // favourite works in any mode
+  if (heart) {
+    fetch(`/clips/${card.dataset.id}/favourite`, {method: 'POST'})
+      .then(r => { if (r.ok) heart.classList.toggle('active'); });
+    return;
+  }
   if (anySelected())                 { toggleSelect(card); return; }   // select mode
   if (e.target.closest('.play-btn')) { openPlayer(card); return; }
   if (e.target.closest('.checkbox')) { toggleSelect(card); return; }
 });
+
+function openShare(eid) {
+  const s = eventSelected[eid] || new Set();
+  if (!s.size) return;
+  document.getElementById('share-clip-ids').value = [...s].join(',');
+  document.getElementById('share-dialog').showModal();
+}
 </script>
 </body>
 </html>
