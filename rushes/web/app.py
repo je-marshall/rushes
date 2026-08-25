@@ -10,14 +10,16 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
-from .. import cameras, config, db, events as ev, importer, settings
+from .. import cameras, config, db, events as ev, importer, settings, shares
 
 _UNPROTECTED = {"/login"}
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        if request.url.path in _UNPROTECTED:
+        # Public share viewing (/share/<token>/...) bypasses login; the
+        # authenticated app (incl. /shares management) does not.
+        if request.url.path in _UNPROTECTED or request.url.path.startswith("/share/"):
             return await call_next(request)
         if not request.session.get("authenticated"):
             return RedirectResponse("/login", status_code=302)
@@ -328,6 +330,107 @@ async def settings_footage(footage_dir: str = Form(...)):
     except ValueError as exc:
         return RedirectResponse(f"/settings?error={quote(str(exc))}", status_code=303)
     return RedirectResponse("/settings?saved=true", status_code=303)
+
+
+# ---------------------------------------------------------------------------
+# Shares
+# ---------------------------------------------------------------------------
+
+def _share_scope(clips: list[dict], token: str) -> list[dict]:
+    """Rewrite media URLs to the public, token-scoped share endpoints."""
+    for c in clips:
+        base = f"/share/{token}/clip/{c['id']}"
+        c["thumb_url"]    = f"{base}/thumb" if c.get("thumbnail_path") else None
+        c["video_url"]    = f"{base}/video"
+        c["download_url"] = f"{base}/download"
+        c["image_url"]    = f"{base}/photo" if c["media_type"] == "photo" else None
+        c["raw_url"]      = f"{base}/raw" if c.get("raw_path") else None
+    return clips
+
+
+@app.get("/shares", response_class=HTMLResponse)
+async def shares_list(request: Request):
+    conn = db.connect()
+    return _templates.TemplateResponse(request, "shares.html", {"shares": shares.list_all(conn)})
+
+
+@app.post("/shares/create")
+async def shares_create(clip_ids: str = Form(...), expiry: str = Form("7d"),
+                        password: str = Form("")):
+    ids  = [int(i) for i in clip_ids.split(",") if i.strip()]
+    conn = db.connect()
+    if ids:
+        shares.create(conn, ids, expiry, password.strip())
+    return RedirectResponse("/shares", status_code=303)
+
+
+@app.post("/shares/{share_id}/revoke")
+async def shares_revoke(share_id: int):
+    conn = db.connect()
+    shares.revoke(conn, share_id)
+    return RedirectResponse("/shares", status_code=303)
+
+
+@app.get("/share/{token}", response_class=HTMLResponse)
+async def share_view(request: Request, token: str):
+    conn = db.connect()
+    s = shares.get(conn, token)
+    if not s:
+        return _templates.TemplateResponse(request, "share.html", {"state": "missing"}, status_code=404)
+    if shares.is_expired(s):
+        return _templates.TemplateResponse(request, "share.html", {"state": "expired"}, status_code=410)
+    if s["password_hash"] and token not in request.session.get("shares_ok", []):
+        return _templates.TemplateResponse(request, "share.html", {"state": "locked", "token": token})
+    clips = _share_scope(_enrich_clips(shares.clip_rows(conn, s["id"])), token)
+    return _templates.TemplateResponse(request, "share.html", {"state": "ok", "token": token, "clips": clips})
+
+
+@app.post("/share/{token}/unlock")
+async def share_unlock(request: Request, token: str, password: str = Form("")):
+    conn = db.connect()
+    s = shares.get(conn, token)
+    if s and not shares.is_expired(s) and s["password_hash"] and shares.verify_password(s["password_hash"], password):
+        ok = request.session.get("shares_ok", [])
+        request.session["shares_ok"] = ok + [token] if token not in ok else ok
+    return RedirectResponse(f"/share/{token}", status_code=303)
+
+
+@app.get("/share/{token}/clip/{clip_id}/{what}")
+async def share_media(request: Request, token: str, clip_id: int, what: str):
+    conn = db.connect()
+    s = shares.get(conn, token)
+    if not s or shares.is_expired(s):
+        return HTMLResponse("unavailable", status_code=404)
+    if s["password_hash"] and token not in request.session.get("shares_ok", []):
+        return HTMLResponse("locked", status_code=403)
+    if not shares.contains(conn, s["id"], clip_id):
+        return HTMLResponse("not in share", status_code=404)
+    row = conn.execute(
+        "SELECT ingest_path, proxy_path, raw_path, thumbnail_path, filename FROM clips WHERE id = ?",
+        (clip_id,),
+    ).fetchone()
+    if not row:
+        return HTMLResponse("not found", status_code=404)
+
+    if what == "download":
+        p = Path(row["ingest_path"])
+        return FileResponse(str(p), filename=row["filename"]) if p.exists() else HTMLResponse("gone", status_code=404)
+    if what == "raw":
+        if not row["raw_path"] or not Path(row["raw_path"]).exists():
+            return HTMLResponse("no raw", status_code=404)
+        return FileResponse(row["raw_path"], media_type="application/octet-stream",
+                            filename=Path(row["filename"]).stem + ".GPR")
+    if what == "thumb":
+        p = row["thumbnail_path"]
+        return FileResponse(p, media_type="image/jpeg") if p and Path(p).exists() else HTMLResponse("no thumb", status_code=404)
+    if what == "photo":
+        p = Path(row["ingest_path"])
+        return FileResponse(str(p), media_type="image/jpeg") if p.exists() else HTMLResponse("gone", status_code=404)
+    if what == "video":
+        proxy = row["proxy_path"]
+        p = Path(proxy) if proxy and Path(proxy).exists() else Path(row["ingest_path"])
+        return FileResponse(str(p), media_type="video/mp4") if p.exists() else HTMLResponse("gone", status_code=404)
+    return HTMLResponse("bad request", status_code=400)
 
 
 # ---------------------------------------------------------------------------

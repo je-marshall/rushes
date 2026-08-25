@@ -59,6 +59,20 @@ def init_db(conn: sqlite3.Connection) -> None:
             value TEXT
         );
 
+        CREATE TABLE IF NOT EXISTS shares (
+            id            INTEGER PRIMARY KEY,
+            token         TEXT    NOT NULL UNIQUE,
+            password_hash TEXT,                       -- NULL = no password
+            expires_at    TEXT,                       -- ISO; NULL = never
+            created_at    TEXT    NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS share_clips (
+            share_id INTEGER NOT NULL REFERENCES shares(id) ON DELETE CASCADE,
+            clip_id  INTEGER NOT NULL REFERENCES clips(id),
+            PRIMARY KEY (share_id, clip_id)
+        );
+
         CREATE TABLE IF NOT EXISTS import_jobs (
             id          INTEGER PRIMARY KEY,
             source_path TEXT    NOT NULL,

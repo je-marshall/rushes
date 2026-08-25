@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>rushes — shared</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #0f0f0f; color: #e0e0e0; font-family: system-ui, sans-serif; }
+header { padding: 1rem 1.5rem; border-bottom: 1px solid #2a2a2a; background: #1a1a1a; }
+header h1 { font-size: 1.35rem; font-weight: 800; color: #fff; text-transform: lowercase; letter-spacing: -0.03em; font-family: "Montserrat","Poppins","Futura","Century Gothic",system-ui,sans-serif; }
+header .sub { color: #777; font-size: 0.8rem; margin-top: 0.15rem; }
+
+.centre { max-width: 26rem; margin: 6rem auto; text-align: center; padding: 0 1.5rem; }
+.centre h2 { color: #fff; font-size: 1.1rem; margin-bottom: 0.75rem; }
+.centre p { color: #888; font-size: 0.9rem; line-height: 1.6; }
+.centre form { margin-top: 1.5rem; display: flex; gap: 0.5rem; }
+.centre input { flex: 1; background: #111; border: 1px solid #333; color: #eee; padding: 0.55rem 0.7rem; border-radius: 5px; font-size: 0.95rem; }
+.centre button { background: #2a6abf; border: none; color: #fff; padding: 0.55rem 1rem; border-radius: 5px; cursor: pointer; }
+
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 1px; background: #1a1a1a; margin: 1px; }
+.clip { background: #0f0f0f; display: flex; flex-direction: column; }
+.thumb-wrap { position: relative; aspect-ratio: 16/9; background: #1a1a1a; overflow: hidden; cursor: pointer; }
+.thumb-wrap img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.no-thumb { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: #333; font-size: 2rem; }
+.play-btn { position: absolute; inset: 0; margin: auto; width: 3rem; height: 3rem; border-radius: 50%; border: none; cursor: pointer; background: rgba(0,0,0,0.55); color: #fff; font-size: 1.1rem; display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity .12s; }
+.thumb-wrap:hover .play-btn { opacity: 1; }
+.clip-info { padding: 0.5rem 0.7rem 0.7rem; display: flex; flex-direction: column; gap: 0.3rem; }
+.clip-name { font-size: 0.78rem; color: #bbb; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.clip-meta { font-size: 0.7rem; color: #555; display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.clip-actions a { color: #7fa8d4; font-size: 0.72rem; text-decoration: none; }
+.clip-actions a:hover { text-decoration: underline; }
+
+#player { display: none; position: fixed; inset: 0; z-index: 40; background: rgba(0,0,0,0.9); align-items: center; justify-content: center; padding: 1.5rem; }
+#player.visible { display: flex; }
+#player-box { display: flex; flex-direction: column; max-width: 95vw; max-height: 92vh; }
+#player-bar { display: flex; align-items: center; gap: 1rem; padding: 0 0.2rem 0.6rem; }
+#player-title { font-size: 0.9rem; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#player-bar a { color: #aad4ff; text-decoration: none; font-size: 0.82rem; }
+#player-close { background: none; border: none; color: #ccc; font-size: 1.4rem; cursor: pointer; }
+#player-video { width: min(90vw,1600px); max-height: 80vh; background: #000; border-radius: 6px; display: block; }
+#player-image { max-width: min(92vw,1800px); max-height: 82vh; border-radius: 6px; display: block; }
+</style>
+</head>
+<body>
+
+{% if state == 'ok' %}
+<header>
+  <h1>rushes</h1>
+  <div class="sub">{{ clips | length }} item{{ 's' if clips | length != 1 }} shared with you</div>
+</header>
+
+<div class="grid">
+  {% for c in clips %}
+  <div class="clip">
+    <div class="thumb-wrap" data-id="{{ c.id }}" data-media-type="{{ c.media_type }}"
+         data-video="{{ c.video_url }}" data-image="{{ c.image_url or '' }}"
+         data-name="{{ c.filename }}" onclick="openPlayer(this)">
+      {% if c.thumb_url %}<img src="{{ c.thumb_url }}" loading="lazy" alt="">{% else %}<div class="no-thumb">{{ '🖼' if c.media_type == 'photo' else '▶' }}</div>{% endif %}
+      <button class="play-btn">{{ '⤢' if c.media_type == 'photo' else '▶' }}</button>
+    </div>
+    <div class="clip-info">
+      <div class="clip-name" title="{{ c.filename }}">{{ c.filename }}</div>
+      <div class="clip-meta">
+        <span>{{ c.display_camera }}</span>
+        {% if c.recorded_at %}<span>{{ c.recorded_at[:10] }}</span>{% endif %}
+      </div>
+      <div class="clip-actions">
+        <a href="{{ c.download_url }}" download>Download</a>
+        {% if c.raw_url %}· <a href="{{ c.raw_url }}" download>RAW</a>{% endif %}
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<div id="player">
+  <div id="player-box">
+    <div id="player-bar">
+      <span id="player-title"></span><span style="flex:1"></span>
+      <button id="player-close" onclick="closePlayer()">✕</button>
+    </div>
+    <video id="player-video" controls playsinline></video>
+    <img id="player-image" alt="" style="display:none">
+  </div>
+</div>
+
+<script>
+const video = document.getElementById('player-video');
+const pimg  = document.getElementById('player-image');
+function openPlayer(el) {
+  const isPhoto = el.dataset.mediaType === 'photo';
+  document.getElementById('player-title').textContent = el.dataset.name || '';
+  if (isPhoto) {
+    video.pause(); video.removeAttribute('src'); video.load(); video.style.display = 'none';
+    pimg.src = el.dataset.image; pimg.style.display = 'block';
+  } else {
+    pimg.removeAttribute('src'); pimg.style.display = 'none';
+    video.style.display = 'block'; video.src = el.dataset.video; video.play().catch(() => {});
+  }
+  document.getElementById('player').classList.add('visible');
+}
+function closePlayer() {
+  video.pause(); video.removeAttribute('src'); video.load(); pimg.removeAttribute('src');
+  document.getElementById('player').classList.remove('visible');
+}
+document.getElementById('player').addEventListener('click', e => { if (e.target.id === 'player') closePlayer(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closePlayer(); });
+</script>
+
+{% elif state == 'locked' %}
+<header><h1>rushes</h1></header>
+<div class="centre">
+  <h2>Password required</h2>
+  <p>This shared album is protected. Enter the password to view it.</p>
+  <form method="post" action="/share/{{ token }}/unlock">
+    <input type="password" name="password" placeholder="Password" autofocus>
+    <button type="submit">Unlock</button>
+  </form>
+</div>
+
+{% elif state == 'expired' %}
+<header><h1>rushes</h1></header>
+<div class="centre"><h2>Link expired</h2><p>This share link has expired and is no longer available.</p></div>
+
+{% else %}
+<header><h1>rushes</h1></header>
+<div class="centre"><h2>Not found</h2><p>This share link doesn’t exist.</p></div>
+{% endif %}
+
+</body>
+</html>

@@ -32,7 +32,20 @@ nav a.active { background: #333; color: #fff; }
 #assign-bar .or { color: #7fa8d4; font-size: 0.78rem; }
 #assign-bar button { background: #2a6abf; border: none; color: #fff; padding: 0.35rem 0.8rem; border-radius: 4px; cursor: pointer; font-size: 0.85rem; }
 #assign-bar button:hover { background: #3a7acf; }
-#deselect-btn { background: transparent; border: 1px solid #2a5a8f; color: #aad4ff; padding: 0.3rem 0.6rem; border-radius: 4px; cursor: pointer; font-size: 0.8rem; margin-left: auto; }
+#share-btn { background: #2a6abf; border: none; color: #fff; padding: 0.35rem 0.8rem; border-radius: 4px; cursor: pointer; font-size: 0.85rem; margin-left: auto; }
+#share-btn:hover { background: #3a7acf; }
+#deselect-btn { background: transparent; border: 1px solid #2a5a8f; color: #aad4ff; padding: 0.3rem 0.6rem; border-radius: 4px; cursor: pointer; font-size: 0.8rem; }
+
+/* share dialog */
+dialog { background: #1a1a1a; color: #e0e0e0; border: 1px solid #2a2a2a; border-radius: 8px; padding: 1.5rem; width: min(420px, 92vw); }
+dialog::backdrop { background: rgba(0,0,0,0.6); }
+dialog h3 { font-size: 1rem; color: #fff; margin-bottom: 1rem; }
+dialog label { display: block; font-size: 0.8rem; color: #aaa; margin-bottom: 0.9rem; }
+dialog select, dialog input { display: block; width: 100%; margin-top: 0.3rem; background: #0f0f0f; border: 1px solid #333; color: #eee; padding: 0.5rem 0.6rem; border-radius: 5px; font-size: 0.9rem; }
+.dialog-actions { display: flex; justify-content: flex-end; gap: 0.6rem; margin-top: 0.5rem; }
+.dialog-actions button { padding: 0.45rem 1rem; border-radius: 5px; cursor: pointer; font-size: 0.85rem; border: none; }
+.dialog-actions button[type=submit] { background: #2a6abf; color: #fff; }
+.dialog-actions button.secondary { background: #2a2a2a; color: #bbb; }
 
 .empty { text-align: center; color: #555; margin-top: 6rem; }
 
@@ -130,6 +143,7 @@ body.select-mode .play-btn { display: none; }
     <a href="/events">Events</a>
     <a href="/cameras">Cameras</a>
     <a href="/import">Import</a>
+    <a href="/shares">Shares</a>
     <a href="/settings">Settings</a>
   </nav>
   <form method="post" action="/logout" style="margin-left:auto">
@@ -151,8 +165,31 @@ body.select-mode .play-btn { display: none; }
     <input type="text" name="new_event" placeholder="new event name" autocomplete="off" spellcheck="false">
     <button type="submit">Move</button>
   </form>
+  <button id="share-btn" type="button" onclick="openShare()">Share</button>
   <button id="deselect-btn" type="button" onclick="clearSelection()">✕ Deselect all</button>
 </div>
+
+<dialog id="share-dialog">
+  <form method="post" action="/shares/create">
+    <h3>Create share link</h3>
+    <input type="hidden" name="clip_ids" id="share-clip-ids">
+    <label>Expires
+      <select name="expiry">
+        <option value="24h">24 hours</option>
+        <option value="7d" selected>7 days</option>
+        <option value="30d">30 days</option>
+        <option value="never">Never</option>
+      </select>
+    </label>
+    <label>Password (optional)
+      <input type="text" name="password" autocomplete="off" spellcheck="false" placeholder="leave blank for none">
+    </label>
+    <div class="dialog-actions">
+      <button type="button" class="secondary" onclick="document.getElementById('share-dialog').close()">Cancel</button>
+      <button type="submit">Create link</button>
+    </div>
+  </form>
+</dialog>
 
 <p class="empty" id="empty" style="display:none">No unsorted clips — plug in a GoPro to ingest, or check Events.</p>
 <div class="grid" id="clip-grid"></div>
@@ -272,6 +309,12 @@ function clearSelection() {
   selected.clear();
   grid.querySelectorAll('.clip.selected').forEach(el => el.classList.remove('selected'));
   updateBar();
+}
+
+function openShare() {
+  if (!selected.size) return;
+  document.getElementById('share-clip-ids').value = [...selected].join(',');
+  document.getElementById('share-dialog').showModal();
 }
 function updateBar() {
   document.body.classList.toggle('select-mode', selectMode());
