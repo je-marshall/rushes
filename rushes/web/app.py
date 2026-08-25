@@ -70,7 +70,12 @@ def _query_unsorted(conn, favourite: bool) -> list[dict]:
     return _enrich_clips(rows)
 
 
-@app.get("/", response_class=HTMLResponse)
+@app.get("/")
+async def home():
+    return RedirectResponse("/events", status_code=302)
+
+
+@app.get("/unsorted", response_class=HTMLResponse)
 async def index(request: Request, favourite: bool = False):
     # The grid is populated + kept live by JS via /api/unsorted.json; here we
     # just render the shell and the events list for the assign dropdown.
@@ -148,10 +153,10 @@ async def assign_clips(clip_ids: str = Form(...), event_id: str = Form(""),
     elif event_id:
         target = int(event_id)
     else:
-        return RedirectResponse("/", status_code=303)  # nothing chosen
+        return RedirectResponse("/unsorted", status_code=303)  # nothing chosen
     if ids:
         ev.assign_clips(conn, ids, target)
-    return RedirectResponse("/", status_code=303)
+    return RedirectResponse("/unsorted", status_code=303)
 
 
 @app.post("/clips/{clip_id}/favourite")
