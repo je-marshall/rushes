@@ -27,7 +27,7 @@
     d.innerHTML = `
       <div class="thumb-wrap">
         ${c.thumb_url ? `<img src="${c.thumb_url}" loading="lazy" alt="">` : `<div class="no-thumb">${photo ? "🖼" : "▶"}</div>`}
-        <button class="play-btn" title="${photo ? "View" : "Play"}">${photo ? "⤢" : "▶"}</button>
+        <button class="play-btn" title="${photo ? "View" : "Play"}">▶</button>
         <div class="checkbox" title="Select"></div>
         <button class="heart" title="Favourite">♥</button>
       </div>
