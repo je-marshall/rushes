@@ -25,7 +25,8 @@ nav a.active { background: #333; color: #fff; }
 .events-toolbar { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1.5rem; }
 .new-event-btn { background: #2a6abf; border: none; color: #fff; padding: 0.5rem 1rem; border-radius: 5px; cursor: pointer; font-size: 0.9rem; }
 .new-event-btn:hover { background: #3a7acf; }
-.collapse-btn { margin-left: auto; background: #1e1e1e; border: 1px solid #2a2a2a; color: #999; padding: 0.4rem 0.85rem; border-radius: 5px; cursor: pointer; font-size: 0.82rem; }
+.event-search { flex: 1; min-width: 8rem; max-width: 22rem; background: #0f0f0f; border: 1px solid #333; color: #eee; padding: 0.4rem 0.75rem; border-radius: 999px; font-size: 0.82rem; }
+.collapse-btn { background: #1e1e1e; border: 1px solid #2a2a2a; color: #999; padding: 0.4rem 0.85rem; border-radius: 5px; cursor: pointer; font-size: 0.82rem; }
 .collapse-btn:hover { background: #2a2a2a; color: #ccc; }
 
 .event-block { margin-bottom: 2.5rem; }
@@ -71,6 +72,7 @@ dialog input, dialog select { display: block; width: 100%; margin-top: 0.3rem; b
   .event-header .count { margin-left: 0; }
   .rename-btn { margin-left: 0; }
 }
+h1, h2, h3, nav a, button, .filter-btn { text-transform: lowercase; }
 </style>
 </head>
 <body>
@@ -96,6 +98,8 @@ dialog input, dialog select { display: block; width: 100%; margin-top: 0.3rem; b
   <div class="events-toolbar">
     <button class="new-event-btn" type="button" onclick="document.getElementById('create-dialog').showModal()">+ New event</button>
     <button class="filter-btn" id="fav-toggle" type="button" onclick="toggleFav()">♥ Favourites</button>
+    <input type="search" id="event-search" class="event-search" placeholder="Search events…"
+           autocomplete="off" oninput="onSearch(this.value)">
     <button class="collapse-btn" id="collapse-all" type="button" onclick="toggleAll()">Collapse all</button>
   </div>
 
@@ -237,22 +241,27 @@ function openShare(eid) {
   document.getElementById('share-dialog').showModal();
 }
 
-// --- favourites filter ---
+// --- filters (favourites + search) ---
 let favOnly = false;
+let searchTerm = '';
 function toggleFav() {
   favOnly = !favOnly;
   document.getElementById('fav-toggle').classList.toggle('active', favOnly);
-  applyFav();
+  applyFilters();
 }
-function applyFav() {
+function onSearch(v) { searchTerm = v; applyFilters(); }
+function applyFilters() {
+  const q = searchTerm.trim().toLowerCase();
   document.querySelectorAll('.event-block').forEach(blk => {
+    const name = blk.querySelector('h2').textContent.toLowerCase();
+    const nameMatch = !q || name.includes(q);
     let vis = 0;
     blk.querySelectorAll('.clip').forEach(c => {
       const show = !favOnly || c.querySelector('.heart').classList.contains('active');
       c.style.display = show ? '' : 'none';
       if (show) vis++;
     });
-    blk.style.display = (favOnly && vis === 0) ? 'none' : '';
+    blk.style.display = (nameMatch && !(favOnly && vis === 0)) ? '' : 'none';
   });
 }
 
@@ -260,7 +269,7 @@ function applyFav() {
 document.querySelector('.page').addEventListener('click', e => {
   const card = e.target.closest('.clip');
   if (!card) return;
-  if (e.target.closest('.heart'))    { Clips.heartToggle(card).then(ok => { if (ok) applyFav(); }); return; }
+  if (e.target.closest('.heart'))    { Clips.heartToggle(card).then(ok => { if (ok) applyFilters(); }); return; }
   if (anySelected())                 { toggleSelect(card); return; }
   if (e.target.closest('.play-btn')) { Clips.openPlayer(card); return; }
   if (e.target.closest('.checkbox')) { toggleSelect(card); return; }
