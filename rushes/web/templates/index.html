@@ -47,6 +47,11 @@ dialog select, dialog input { display: block; width: 100%; margin-top: 0.3rem; b
 .dialog-actions button[type=submit] { background: #2a6abf; color: #fff; }
 .dialog-actions button.secondary { background: #2a2a2a; color: #bbb; }
 
+.filters { padding: 0.6rem 1.5rem; display: flex; gap: 0.5rem; }
+.filter-btn { background: #1e1e1e; border: 1px solid #2a2a2a; color: #888; padding: 0.3rem 0.85rem; border-radius: 999px; cursor: pointer; font-size: 0.82rem; }
+.filter-btn:hover { background: #2a2a2a; color: #ccc; }
+.filter-btn.active { background: #3a1a26; border-color: #ff4d6d; color: #ff8da3; }
+
 .empty { text-align: center; color: #555; margin-top: 6rem; }
 
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1px; background: #1a1a1a; margin: 1px; }
@@ -139,8 +144,7 @@ body.select-mode .play-btn { display: none; }
   <button class="burger" type="button" aria-label="Menu" onclick="document.body.classList.toggle('nav-open')">☰</button>
   <nav>
     <a href="/events">Events</a>
-    <a href="/"               {% if not favourite %}class="active"{% endif %}>Unsorted</a>
-    <a href="/?favourite=true" {% if favourite %}class="active"{% endif %}>♥ Favourites</a>
+    <a href="/" class="active">Unsorted</a>
     <a href="/cameras">Cameras</a>
     <a href="/import">Import</a>
     <a href="/shares">Shares</a>
@@ -150,6 +154,10 @@ body.select-mode .play-btn { display: none; }
     <button type="submit" style="background:none;border:none;color:#555;cursor:pointer;font-size:0.8rem;padding:0.3rem 0.5rem">Sign out</button>
   </form>
 </header>
+
+<div class="filters">
+  <button class="filter-btn" id="fav-toggle" type="button" onclick="toggleFav()">♥ Favourites</button>
+</div>
 
 <div id="assign-bar">
   <span id="sel-count">0 clips selected</span>
@@ -216,9 +224,16 @@ body.select-mode .play-btn { display: none; }
 <script>
 const selected = new Set();
 const grid  = document.getElementById('clip-grid');
-const params = new URLSearchParams(location.search);
-const query  = new URLSearchParams();
-if (params.get('favourite')) query.set('favourite', 'true');
+let favOnly = new URLSearchParams(location.search).get('favourite') === 'true';
+
+function toggleFav() {
+  favOnly = !favOnly;
+  document.getElementById('fav-toggle').classList.toggle('active', favOnly);
+  const u = new URL(location);
+  if (favOnly) u.searchParams.set('favourite', 'true'); else u.searchParams.delete('favourite');
+  history.replaceState(null, '', u);
+  refresh();
+}
 
 function esc(s) { return (s || '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
@@ -374,10 +389,13 @@ grid.addEventListener('click', async e => {
 // --- live refresh ---
 async function refresh() {
   try {
-    const r = await fetch('/api/unsorted.json?' + query.toString());
+    const q = new URLSearchParams();
+    if (favOnly) q.set('favourite', 'true');
+    const r = await fetch('/api/unsorted.json?' + q.toString());
     if (r.ok) reconcile((await r.json()).clips);
   } catch (e) {}
 }
+document.getElementById('fav-toggle').classList.toggle('active', favOnly);
 refresh();
 setInterval(refresh, 4000);
 </script>
