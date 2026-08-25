@@ -251,7 +251,11 @@ function openShare(eid) {
   document.getElementById('share-dialog').showModal();
 }
 function openShareEvent(eid) {
-  const ids = [...document.querySelectorAll('#grid-' + eid + ' .clip')].map(c => c.dataset.id);
+  // Share only what the active filters (favourites + media type) currently show.
+  const ids = [...document.querySelectorAll('#grid-' + eid + ' .clip')].filter(c => {
+    const favOk = !favOnly || c.querySelector('.heart').classList.contains('active');
+    return favOk && Clips.mediaAllows(c.dataset.mediaType);
+  }).map(c => c.dataset.id);
   if (!ids.length) return;
   document.getElementById('share-clip-ids').value = ids.join(',');
   document.getElementById('share-dialog').showModal();
